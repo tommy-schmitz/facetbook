@@ -36,6 +36,7 @@ leq s (P p ) (U u ) =
   let us = permissions s !! p  in
   find (u==) us /= Nothing
 
+{-
 join :: LatticeState -> Label -> Label -> Label
 join s Bot    k      = k
 join s k      Bot    = k
@@ -50,6 +51,7 @@ join s (P p ) (U u ) =
     U u
   else
     Top
+-}
 
 data Fac a where
   Raw     ::                         a      -> Fac a
@@ -69,25 +71,18 @@ instance Monad Fac where
   return = Raw
   (>>=) = BindFac
 
-project :: LatticeState -> Label -> Fac a -> Fac a
+project :: LatticeState -> Label -> Fac a -> a
 project s k1 = g where
-  g :: Fac a -> Fac a
+  g :: Fac a -> a
   g (Raw a) =
-    Raw a
+    a
   g (Fac k2 fa1 fa2) =
     if leq s k2 k1 then
       g fa1
     else
       g fa2
   g (BindFac fb1 c) =
-    let Raw b = g fb1  in
-    g (c b)
-
-data FIO a where
-  Return :: a -> FIO a
-  BindFIO :: FIO a -> (a -> FIO b) -> FIO b
-  Run :: Fac (FIO a) -> FIO (Fac a)
-type PC = (Label, [Label])
+    g (c (g fb1))
 
 data PostList =
     Nil
@@ -96,7 +91,7 @@ instance Show PostList where
   show Nil = "Nil"
   show (Cons fs fpl) = "Cons (" ++ show fs ++ ") (" ++ show fpl ++ ")"
 
-flatten :: Faceted PostList -> [String]
+flatten :: Fac PostList -> Fac [String]
 flatten fpl = do  --Fac
   pl <- fpl
   case pl of
@@ -106,30 +101,6 @@ flatten fpl = do  --Fac
       s <- fs
       ss <- flatten fpl
       Raw (s:ss)
-
-{-
-project_pl s k (Raw Nil) =
-  Raw Nil
-project_pl s k (Raw (Cons fs fd)) =
-  Raw (Cons (project s k fs) (project_pl s k fd))
-project_pl s k fd = project_pl s k (project s k fd)
--}
-
-project_pl s k fpl = project s k $ facpostlist_to_faclist fpl
-
-{-
-example = do
-  let da = Fac ["a"] (Raw "a:42") (Raw "censored")
-  let db = Fac ["b"] (Raw "b:43") (Raw "censored")
-  let dc = Fac ["c"] (Raw "c:44") (Raw "censored")
-
-  let d0 = Raw Nil
-  let d1 = Fac ["a"] (Raw (Cons da d0)) d0
-  let d2 = Fac ["b"] (Raw (Cons db d1)) d1
-  let d3 = Fac ["c"] (Raw (Cons dc d2)) d2
-
-  d3
--}
 
 escape s = fromString s' where
   f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
@@ -141,13 +112,13 @@ escape s = fromString s' where
   f []        a = a
   s' = reverse (f s [])
 
-display_redirect_page =
+display_redirect_page username =
   html $ "\
     \<meta http-equiv=\"refresh\" content=\"0; url="<> escape username <>"\" />\
     \"
-display_main_page =
+display_main_page username d =
   html $ "\
-    \"<> escape (show n) <>". Hello, "<> escape username <>"\
+    \Hello, "<> escape username <>"\
     \<form method=\"post\" action=\"/\">\
     \  Username: <input name=\"username\" value=\""<> escape username <>"\"></input><br />\
     \  Permissions: <input name=\"permissions\"></input><br />\
@@ -155,14 +126,9 @@ display_main_page =
     \  <textarea name=\"content\"></textarea><br />\
     \  <input type=\"submit\"></input><br />\
     \</form>\
+    \<br />\
     \Your view of the database:<br />\
-    \"<> escape (show (project_pl s (U username) fd)) <> "<br /><br />\
-{-
-    \The lattice:<br />\
-    \"<> escape (show s) <> "<br /><br />\
-    \The real database:<br />\
-    \"<> escape (show fd) <> "\
--}
+    \"<> escape (show d) <> "<br /><br />\
     \"
 
 main = do
@@ -183,10 +149,10 @@ main = do
       let post_id = length (permissions s)
       lift $ writeIORef lattice $ State (permissions s ++ [perms])
       lift $ writeIORef database $ Fac (P post_id) (Raw (Cons (Raw content) fd)) fd
-      redirect_to_main_page
+      display_redirect_page username
     get "/:username" $ do
       username <- param "username"
       s <- lift $ readIORef lattice
       fd <- lift $ readIORef database
       let d = project s (U username) (flatten fd)
-      display_main_page d
+      display_main_page username d
