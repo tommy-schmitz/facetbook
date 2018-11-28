@@ -12,56 +12,21 @@ import Data.String
 import Web.Scotty
 
 type User = String
-type PostId = Int
-
-data LatticeState = State {
-  permissions :: [[User]]
-} deriving Show
+type Permissions = [User]
 data Label =
-    Top
-  | U User
-  | P PostId
+    Whitelist [User]
   | Bot
-  deriving Show
-
-leq :: LatticeState -> Label -> Label -> Bool
-leq s Bot    _      = True
-leq s _      Bot    = False
-leq s _      Top    = True
-leq s Top    _      = False
-leq s (U u1) (U u2) = u1 == u2
-leq s (P p1) (P p2) = p1 == p2
-leq s (U _ ) (P _ ) = False
-leq s (P p ) (U u ) =
-  let us = permissions s !! p  in
-  find (u==) us /= Nothing
-
-{-
-join :: LatticeState -> Label -> Label -> Label
-join s Bot    k      = k
-join s k      Bot    = k
-join s _      Top    = Top
-join s Top    _      = Top
-join s (U u1) (U u2) = if u1 == u2 then U u1 else Top
-join s (P p1) (P p2) = if p1 == p2 then P p1 else Top
-join s (U u ) (P p ) = join s (P p) (U u)
-join s (P p ) (U u ) =
-  let us = permissions s !! p  in
-  if find (u==) us /= Nothing then
-    U u
-  else
-    Top
--}
+  deriving (Show, Eq)
+leq :: Label -> Label -> Bool
+leq Bot            _               = True
+leq _              Bot             = False
+leq (Whitelist us) (Whitelist [u]) = find (u==) us /= Nothing
+leq k1             k2              = k1 == k2
 
 data Fac a where
   Raw     ::                         a      -> Fac a
   Fac     :: Label -> Fac a ->     Fac a    -> Fac a
   BindFac ::          Fac a -> (a -> Fac b) -> Fac b
-instance Show a => Show (Fac a) where
-  show (Raw a)         = "Raw (" ++ show a ++ ")"
-  show (Fac k fa1 fa2) = "Fac (" ++ show k ++ ") (" ++ show fa1 ++ ") (" ++ show fa2 ++ ")"
-  show (BindFac fa f)  = "BindFac (...) (...)"
-
 instance Functor Fac where
   fmap = liftM
 instance Applicative Fac where
@@ -70,26 +35,29 @@ instance Applicative Fac where
 instance Monad Fac where
   return = Raw
   (>>=) = BindFac
-
-project :: LatticeState -> Label -> Fac a -> a
-project s k1 = g where
+-- Unsafe function
+project :: Label -> Fac a -> a
+project k1 = g where
   g :: Fac a -> a
   g (Raw a) =
     a
   g (Fac k2 fa1 fa2) =
-    if leq s k2 k1 then
+    if leq k2 k1 then
       g fa1
     else
       g fa2
   g (BindFac fb1 c) =
     g (c (g fb1))
 
+-------------------------------
+--  Above is in TCB          --
+-------------------------------
+--  Below may not be in TCB  --
+-------------------------------
+
 data PostList =
     Nil
   | Cons (Fac String) (Fac PostList)
-instance Show PostList where
-  show Nil = "Nil"
-  show (Cons fs fpl) = "Cons (" ++ show fs ++ ") (" ++ show fpl ++ ")"
 
 flatten :: Fac PostList -> Fac [String]
 flatten fpl = do  --Fac
@@ -131,28 +99,29 @@ display_main_page username d =
     \"<> escape (show d) <> "<br /><br />\
     \"
 
-main = do
-  lattice <- newIORef (State [])
+-------------------------------
+--  Above may not be in TCB  --
+-------------------------------
+--  Below is in TCB          --
+-------------------------------
+
+main = do  --IO
   database <- newIORef (Raw Nil)
-  scotty 3000 $ do
-    get "/" $ do
+  scotty 3000 $ do  --Scotty
+    get "/" $ do  --ScottyIO
       html $ "\
         \Please log in by typing your username at the end of the URL.\
         \"
-    post "/" $ do
+    post "/" $ do  --ScottyIO
       username <- param "username"
       p <- param "permissions"
-      let perms = username : words p
+      let permissions = username : words p
       content <- param "content"
-      s <- lift $ readIORef lattice
-      fd <- lift $ readIORef database
-      let post_id = length (permissions s)
-      lift $ writeIORef lattice $ State (permissions s ++ [perms])
-      lift $ writeIORef database $ Fac (P post_id) (Raw (Cons (Raw content) fd)) fd
+      fpl <- lift $ readIORef database
+      lift $ writeIORef database $ Fac (Whitelist permissions) (Raw (Cons (Raw content) fpl)) fpl
       display_redirect_page username
-    get "/:username" $ do
+    get "/:username" $ do  --ScottyIO
       username <- param "username"
-      s <- lift $ readIORef lattice
-      fd <- lift $ readIORef database
-      let d = project s (U username) (flatten fd)
+      fpl <- lift $ readIORef database
+      let d = project (Whitelist [username]) (flatten fpl)
       display_main_page username d

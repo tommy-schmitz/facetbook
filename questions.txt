@@ -1,0 +1,23 @@
+This prototype uses faceted values, but it doesn't use faceted execution yet.
+Without faceted execution, it's much like an ordinary sandbox.
+Is that interesting enough?
+Can you think of any good use cases for faceted execution within this app? as opposed to "ordinary" sandboxing?
+Equivalently, can you think of any good use cases for SME within this app?
+
+I notice that the code pertaining to the lattice is both important and nontrivial.
+In a previous iteration, I had a LatticeState data structure, and added new elements to the lattice when creating posts.
+Then I changed it so that the lattice remains static (but is infinite).
+Does it seem reasonable to have such a large module in the TCB?
+
+Arguably the front-end code is in the TCB because if it's wrong, then the user will use the website incorrectly and perhaps create a post with the wrong permissions, or something.
+Do you recommend defining the TCB in this way?
+
+The "faceted next pointer" idea seems to work.
+I wonder how general it is though?
+Do you have any sense of that?
+
+The reference implementation (without facets) will have a similar structure as the faceted implementation.
+The difference will be that it doesn't use the faceted monad to achieve the encapsulation, just ad hoc code.
+That means that the equivalent of the "flatten" function and the "PostList" datatype will then become in the TCB.
+That's a win, but it's not a very big win.
+Can you imagine other modules that might be in the reference TCB but not in the faceted TCB?
