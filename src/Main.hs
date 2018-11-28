@@ -27,6 +27,7 @@ data Fac a where
   Raw     ::                         a      -> Fac a
   Fac     :: Label -> Fac a ->     Fac a    -> Fac a
   BindFac ::          Fac a -> (a -> Fac b) -> Fac b
+
 instance Functor Fac where
   fmap = liftM
 instance Applicative Fac where
@@ -35,6 +36,7 @@ instance Applicative Fac where
 instance Monad Fac where
   return = Raw
   (>>=) = BindFac
+
 -- Unsafe function
 project :: Label -> Fac a -> a
 project k1 = g where
@@ -118,7 +120,8 @@ main = do  --IO
       let permissions = username : words p
       content <- param "content"
       fpl <- lift $ readIORef database
-      lift $ writeIORef database $ Fac (Whitelist permissions) (Raw (Cons (Raw content) fpl)) fpl
+      let new_fpl = Fac (Whitelist permissions) (Raw (Cons (Raw content) fpl)) fpl
+      lift $ writeIORef database new_fpl
       display_redirect_page username
     get "/:username" $ do  --ScottyIO
       username <- param "username"
