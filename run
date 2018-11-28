@@ -1,1 +1,8 @@
-stack build && stack exec facetbook
+text=$(stack build 2>&1)
+status=$?
+echo "$text" | head -n30
+if [ $status == "0" ]; then
+  echo "Compilation successful."
+  echo
+  stack exec facetbook
+fi
