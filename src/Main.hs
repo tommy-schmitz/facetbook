@@ -11,16 +11,23 @@ import Data.String
 
 import Web.Scotty
 
+type Post = String
 type User = String
+
+data LatticeState = LS [(User, User)]
 data Label =
-    Whitelist [User]
+    Top
+  | U User
   | Bot
-  deriving (Show, Eq)
-leq :: Label -> Label -> Bool
-leq Bot            _               = True
-leq _              Bot             = False
-leq (Whitelist us) (Whitelist [u]) = find (u==) us /= Nothing
-leq k1             k2              = k1 == k2
+  deriving Show
+leq :: LatticeState -> Label -> Label -> Bool
+leq s Bot    _      = True
+leq s _      Bot    = False
+leq s _      Top    = True
+leq s Top    _      = False
+leq s (U u1) (U u2) =
+  let LS edges = s  in
+  find ((u1,u2)==) edges /= Nothing
 
 data Fac a where
   Raw     ::                         a      -> Fac a
@@ -37,13 +44,13 @@ instance Monad Fac where
   (>>=) = BindFac
 
 -- Unsafe function
-project :: Label -> Fac a -> a
-project k1 = g where
+project :: LatticeState -> Label -> Fac a -> a
+project lattice k1 = g where
   g :: Fac a -> a
   g (Raw a) =
     a
   g (Fac k2 fa1 fa2) =
-    if leq k2 k1 then
+    if leq lattice k2 k1 then
       g fa1
     else
       g fa2
@@ -56,20 +63,19 @@ project k1 = g where
 --  Below may not be in TCB  --
 -------------------------------
 
-data PostList =
+data FList a =
     Nil
-  | Cons (Fac String) (Fac PostList)
+  | Cons a (Fac (FList a))
 
-flatten :: Fac PostList -> Fac [String]
-flatten fpl = do  --Fac
-  pl <- fpl
-  case pl of
+flatten :: Fac (FList a) -> Fac [a]
+flatten ffl = do  --Fac
+  fl <- ffl
+  case fl of
     Nil ->
       Raw []
-    Cons fs fpl -> do  --Fac
-      s <- fs
-      ss <- flatten fpl
-      Raw (s:ss)
+    Cons x ffl -> do  --Fac
+      xs <- flatten ffl
+      Raw (x:xs)
 
 escape s = fromString s' where
   f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
@@ -83,19 +89,29 @@ escape s = fromString s' where
 
 display_redirect_page username =
   html $ "\
-    \<meta http-equiv=\"refresh\" content=\"0; url="<> escape username <>"\" />\
+    \<meta http-equiv=\"refresh\" content=\"0; url=/read-all-posts/"<> escape username <>"\" />\
     \"
 display_main_page username d =
   html $ "\
     \Hello, "<> escape username <>"\
-    \<form method=\"post\" action=\"/\">\
+    \<form method=\"post\" action=\"/add-friend\">\
     \  Username: <input name=\"username\" value=\""<> escape username <>"\"></input><br />\
-    \  Permissions: <input name=\"permissions\"></input><br />\
-    \  Content:<br />\
-    \  <textarea name=\"content\"></textarea><br />\
+    \  Add friend: <input name=\"friend\" value=\"\"></input><br />\
     \  <input type=\"submit\"></input><br />\
     \</form>\
-    \<br />\
+    \<hr />\
+    \<form method=\"post\" action=\"/remove-friend\">\
+    \  Username: <input name=\"username\" value=\""<> escape username <>"\"></input><br />\
+    \  Remove friend: <input name=\"enemy\" value=\"\"></input><br />\
+    \  <input type=\"submit\"></input><br />\
+    \</form>\
+    \<hr />\
+    \<form method=\"post\" action=\"/post\">\
+    \  Username: <input name=\"username\" value=\""<> escape username <>"\"></input><br />\
+    \  New post:<br /><textarea name=\"content\"></textarea><br />\
+    \  <input type=\"submit\"></input><br />\
+    \</form>\
+    \<hr />\
     \Your view of the database:<br />\
     \"<> escape (show d) <> "<br /><br />\
     \"
@@ -106,27 +122,37 @@ display_main_page username d =
 --  Below is in TCB          --
 -------------------------------
 
-old_main = do  --IO
-  database <- newIORef (Raw Nil)
+type FDatabase = (Fac (FList Post), LatticeState)
+
+main = do  --IO
+  database <- newIORef ((Raw Nil, LS []) :: FDatabase)
   scotty 3000 $ do  --Scotty
-    get "/" $ do  --ScottyIO
-      html $ "\
-        \Please log in by typing your username at the end of the URL.\
-        \"
-    post "/" $ do  --ScottyIO
+    post "/add-friend" $ do  --ScottyIO
       username <- param "username"
-      p <- param "permissions"
-      let permissions = username : words p
-      content <- param "content"
-      fpl <- lift $ readIORef database
-      let new_fpl = Fac (Whitelist permissions) (Raw (Cons (Raw content) fpl)) fpl
-      lift $ writeIORef database new_fpl
+      friend <- param "friend"
+      (posts, LS lattice) <- lift $ readIORef database
+      let new_lattice = (username, friend) : lattice
+      database <- lift $ writeIORef database (posts, LS new_lattice)
       display_redirect_page username
-    get "/:username" $ do  --ScottyIO
+    post "/remove-friend" $ do  --ScottyIO
       username <- param "username"
-      fpl <- lift $ readIORef database
-      let d = project (Whitelist [username]) (flatten fpl)
-      display_main_page username d
+      enemy <- param "enemy"
+      (posts, LS lattice) <- lift $ readIORef database
+      let new_lattice = filter (/= (username, enemy)) lattice
+      database <- lift $ writeIORef database (posts, LS new_lattice)
+      display_redirect_page username
+    post "/post" $ do  --ScottyIO
+      username <- param "username"
+      content <- param "content"
+      (posts, lattice) <- lift $ readIORef database
+      let new_posts = Fac (U username) (Raw (Cons content posts)) posts
+      lift $ writeIORef database (new_posts, lattice)
+      display_redirect_page username
+    get "/read-all-posts/:username" $ do  --ScottyIO
+      username <- param "username"
+      (flist, lattice) <- lift $ readIORef database
+      let posts = project lattice (U username) (flatten flist)
+      display_main_page username posts
 
 type Database = [(Label, String)]
 
