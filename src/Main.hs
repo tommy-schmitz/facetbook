@@ -12,7 +12,6 @@ import Data.String
 import Web.Scotty
 
 type User = String
-type Permissions = [User]
 data Label =
     Whitelist [User]
   | Bot
