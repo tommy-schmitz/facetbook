@@ -122,6 +122,7 @@ display_main_page username d =
 --  Below is in TCB          --
 -------------------------------
 
+{-
 type FDatabase = (Fac (FList Post), LatticeState)
 
 main = do  --IO
@@ -153,38 +154,47 @@ main = do  --IO
       (flist, lattice) <- lift $ readIORef database
       let posts = project lattice (U username) (flatten flist)
       display_main_page username posts
+-}
 
-type Database = [(Label, String)]
+type Database = ([(Label, Post)], LatticeState)
 
-filter_database :: String -> Database -> [String]
-filter_database username db =
-  case db of
+filter_database :: User -> Database -> [Post]
+filter_database username (posts, lattice) =
+  case posts of
     [] ->
       []
-    (k, s) : db_tail ->
-      let filtered_tail = filter_database username db_tail  in
-      if k `leq` Whitelist [username] then
-        s : filtered_tail
+    (k, p) : posts_tail ->
+      let filtered_tail = filter_database username (posts_tail, lattice)  in
+      if leq lattice k (U username) then
+        p : filtered_tail
       else
         filtered_tail
 
 main = do  --IO
-  database <- newIORef []
+  database <- newIORef ([], LS [])
   scotty 3000 $ do  --Scotty
-    get "/" $ do  --ScottyIO
-      html $ "\
-        \Please log in by typing your username at the end of the URL.\
-        \"
-    post "/" $ do  --ScottyIO
+    post "/add-friend" $ do  --ScottyIO
       username <- param "username"
-      p <- param "permissions"
-      let permissions = username : words p
-      content <- param "content"
-      db <- lift $ readIORef database
-      let new_db = (Whitelist permissions, content) : db
-      lift $ writeIORef database new_db
+      friend <- param "friend"
+      (posts, LS lattice) <- lift $ readIORef database
+      let new_lattice = (username, friend) : lattice
+      database <- lift $ writeIORef database (posts, LS new_lattice)
       display_redirect_page username
-    get "/:username" $ do  --ScottyIO
+    post "/remove-friend" $ do  --ScottyIO
+      username <- param "username"
+      enemy <- param "enemy"
+      (posts, LS lattice) <- lift $ readIORef database
+      let new_lattice = filter (/= (username, enemy)) lattice
+      database <- lift $ writeIORef database (posts, LS new_lattice)
+      display_redirect_page username
+    post "/post" $ do  --ScottyIO
+      username <- param "username"
+      content <- param "content"
+      (posts, lattice) <- lift $ readIORef database
+      let new_posts = (U username, content) : posts
+      lift $ writeIORef database (new_posts, lattice)
+      display_redirect_page username
+    get "/read-all-posts/:username" $ do  --ScottyIO
       username <- param "username"
       db <- lift $ readIORef database
       let posts = filter_database username db
