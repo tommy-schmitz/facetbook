@@ -107,7 +107,7 @@ display_main_page username d =
 --  Below is in TCB          --
 -------------------------------
 
-main = do  --IO
+old_main = do  --IO
   database <- newIORef (Raw Nil)
   scotty 3000 $ do  --Scotty
     get "/" $ do  --ScottyIO
@@ -128,3 +128,39 @@ main = do  --IO
       fpl <- lift $ readIORef database
       let d = project (Whitelist [username]) (flatten fpl)
       display_main_page username d
+
+type Database = [(Label, String)]
+
+filter_database :: String -> Database -> [String]
+filter_database username db =
+  case db of
+    [] ->
+      []
+    (k, s) : db_tail ->
+      let filtered_tail = filter_database username db_tail  in
+      if k `leq` Whitelist [username] then
+        s : filtered_tail
+      else
+        filtered_tail
+
+main = do  --IO
+  database <- newIORef []
+  scotty 3000 $ do  --Scotty
+    get "/" $ do  --ScottyIO
+      html $ "\
+        \Please log in by typing your username at the end of the URL.\
+        \"
+    post "/" $ do  --ScottyIO
+      username <- param "username"
+      p <- param "permissions"
+      let permissions = username : words p
+      content <- param "content"
+      db <- lift $ readIORef database
+      let new_db = (Whitelist permissions, content) : db
+      lift $ writeIORef database new_db
+      display_redirect_page username
+    get "/:username" $ do  --ScottyIO
+      username <- param "username"
+      db <- lift $ readIORef database
+      let posts = filter_database username db
+      display_main_page username posts
