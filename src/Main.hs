@@ -12,6 +12,9 @@ import Data.List(find)
 import Data.String
 
 import Web.Scotty
+import qualified Network.Wai.Handler.Warp as Warp (run)
+import Network.HTTP.Types.Status(status200)
+import Network.Wai
 
 -- Database API:
 --   CreatePost(Username, Content)
@@ -38,72 +41,11 @@ leq s (U u1) (U u2) =
   else
     let LS edges = s  in
     find ((u1,u2)==) edges /= Nothing
-join :: LatticeState -> Label -> Label -> Label
-join s Bot    k      = k
-join s k      Bot    = k
-join s _      Top    = Top
-join s Top    _      = Top
-join s (U u1) (U u2) =
-  let LS edges = s  in
-  if u1==u2 then
-    U u1
-  else if find ((u1,u2)==) edges /= Nothing then
-    U u2
-  else if find ((u2,u1)==) edges /= Nothing then
-    U u1
-  else
-    Top
 
 data Fac a where
   Raw     ::                         a      -> Fac a
   Fac     :: Label -> Fac a ->     Fac a    -> Fac a
   BindFac ::          Fac a -> (a -> Fac b) -> Fac b
-
-data FIORef a =
-  FIORef (IORef (Fac a))
-
-data FIO a where
-  Return :: a -> FIO a
-  BindFIO :: FIO a -> (a -> FIO b) -> FIO b
-  Swap :: Fac (FIO a) -> FIO (Fac a)
-  New :: a -> FIO (FIORef a)
-  Read :: FIORef a -> FIO (Fac a)
-  Write :: FIORef a -> Fac a -> FIO ()
-
-type PC = (Label, [Label])
-consistent :: LatticeState -> PC -> Bool
-consistent s (k1, []) = k1 /= Top
-consistent s (k1, k2:ks) = not (leq s k2 k1) && consistent s (k1, ks)
-add_pc :: LatticeState -> PC -> Label -> PC
-add_pc s (k, ks) k' = (join s k k', ks)
-subtract_pc :: LatticeState -> PC -> Label -> PC
-subtract_pc _ (k, ks) k' = (k, k':ks)
-
-type M = ContT () (ReaderT PC IO)
-
-run :: LatticeState -> FIO a -> M a
-run s (Return x) =
-  return x
-run s (BindFIO x f) = do
-  y <- run s x
-  run s (f y)
-run s (Swap (Raw ia)) = do
-  a <- run s ia
-  return (Raw a)
-run s (Swap (BindFac (Raw b) f)) =
-  run s (Swap (f b))
-run s (Swap (BindFac (Fac k fb1 fb2) f)) =
-  run s (Swap (Fac k (BindFac fb1 f) (BindFac fb2 f)))
-run s (Swap (BindFac (BindFac c g) f)) =
-  run s (Swap (BindFac c (\x -> BindFac (g x) f)))
-run s (Swap (Fac k fia1 fia2)) = do
-  pc <- ask
-  if   not (consistent s (subtract_pc s pc k))   then
-    run s (Swap fia1)
-  else if   not (consistent s (add_pc s pc k))   then
-    run s (Swap fia2)
-  else
-    error (show pc ++ show k)
 
 instance Functor Fac where
   fmap = liftM
@@ -114,17 +56,6 @@ instance Monad Fac where
   return = Raw
   (>>=) = BindFac
 
-project :: LatticeState -> Label -> Fac a -> IO a
-project s k fa = do
-  temp <- newIORef undefined
-  runReaderT (runContT (run s (Swap $ BindFac fa (\a -> Raw (Return a)))) (\(Raw a) -> do
-      lift $ writeIORef temp a
-      return ()
-    )) (k, [])
-  readIORef temp
-
--- Unsafe function
-{-
 project :: LatticeState -> Label -> Fac a -> a
 project lattice k1 = g where
   g :: Fac a -> a
@@ -137,7 +68,6 @@ project lattice k1 = g where
       g fa2
   g (BindFac fb1 c) =
     g (c (g fb1))
--}
 
 -------------------------------
 --  Above is in TCB          --
@@ -169,10 +99,12 @@ escape s = fromString s' where
   f []        a = a
   s' = reverse (f s [])
 
-display_redirect_page username =
-  html $ "\
+redirect_page username =
+  responseLBS status200 [] $ "\
     \<meta http-equiv=\"refresh\" content=\"0; url=/read-all-posts/"<> escape username <>"\" />\
     \"
+login_page =
+  responseLBS status200 [] "boring login page"
 display_main_page username d =
   html $ "\
     \Hello, "<> escape username <>"\
@@ -206,25 +138,62 @@ display_main_page username d =
 
 -- Faceted section --
 
-type FDatabase = (Fac (FList Post), LatticeState)
+type FDatabase = Fac (FList Post)
+
+{-
+faceted_handler database username request =
+  let req = pathInfo request !! 1  in
+  if req == "read-all-posts" then do
+    flist <- readIORef database
+    posts <- lift $ project lattice (U username) (flatten flist)
+    display_main_page username posts
+  else if req == "post" then do
+    let new_posts = Fac (U username) (Raw (Cons p posts)) posts
+    lift $ writeIORef database new_posts
+    display_redirect_page username
+  else
+    undefined
+
+-- This is the password-checker function.
+-- Currently, password-checking always succeeds.
+check_credentials :: Request -> Maybe Username
+check_credentials request =
+  Just (pathInfo request !! 0)
 
 main_faceted = do  --IO
-  database <- newIORef ((Raw Nil, LS []) :: FDatabase)
+  database <- newIORef (Raw Nil)
+  Warp.run 3000 $ \request respond -> do  --IO
+    if ["login"] == pathInfo request then
+      respond login_page
+    else
+      case check_credentials request of
+        Just username ->
+          let response = faceted_handler database username request  in
+          respond login_page
+        Nothing ->
+          respond login_page
+-}
+
+-- An issue.
+-- Should the FIO interface allow running a server inside a server?
+-- Answer: no, who cares about that?
+-- So then what should the top-level interface be like?
+-- Built-in database functionality at the top-level?
+
+main_faceted = do
+  Warp.run 3000 $ \request respond -> do
+    Warp.run 3001 $ \request respond ->
+      respond $ responseLBS status200 [] "3001"
+    respond $ responseLBS status200 [] "3000"
+
+{-
+  database <- newIORef (Raw Nil :: FDatabase)
   scotty 3000 $ do  --Scotty
-    post "/add-friend" $ do  --ScottyIO
+    get "login" $ do  --ScottyIO
+      display_login_page
+    notFound $ do  --ScottyIO
       username <- param "username"
-      friend <- param "friend"
-      (posts, LS lattice) <- lift $ readIORef database
-      let new_lattice = (username, friend) : lattice
-      database <- lift $ writeIORef database (posts, LS new_lattice)
-      display_redirect_page username
-    post "/remove-friend" $ do  --ScottyIO
-      username <- param "username"
-      enemy <- param "enemy"
-      (posts, LS lattice) <- lift $ readIORef database
-      let new_lattice = filter (/= (username, enemy)) lattice
-      database <- lift $ writeIORef database (posts, LS new_lattice)
-      display_redirect_page username
+      
     post "/post" $ do  --ScottyIO
       username <- param "username"
       content <- param "content"
@@ -237,24 +206,20 @@ main_faceted = do  --IO
       (flist, lattice) <- lift $ readIORef database
       posts <- lift $ project lattice (U username) (flatten flist)
       display_main_page username posts
+-}
 
 ----------------------------
 
 -- Non-faceted section --
 
+{-
+
 type Database = ([(Label, Post)], LatticeState)
 
 filter_database :: User -> Database -> [Post]
 filter_database username (posts, lattice) =
-  case posts of
-    [] ->
-      []
-    (k, p) : posts_tail ->
-      let filtered_tail = filter_database username (posts_tail, lattice)  in
-      if leq lattice k (U username) then
-        p : filtered_tail
-      else
-        filtered_tail
+  let x = filter (\(k,p) -> leq lattice k (U username)) posts  in
+  map snd x
 
 main_nonfaceted = do  --IO
   database <- newIORef ([], LS [])
@@ -285,5 +250,6 @@ main_nonfaceted = do  --IO
       db <- lift $ readIORef database
       let posts = filter_database username db
       display_main_page username posts
+-}
 
 main = main_faceted

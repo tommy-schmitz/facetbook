@@ -20,4 +20,7 @@ executable facetbook
   build-depends:       base >= 4.7 && < 5,
                        transformers,
                        mtl,
-                       scotty
+                       scotty,
+                       warp,
+                       http-types,
+                       wai
