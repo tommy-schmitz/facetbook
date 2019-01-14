@@ -2,6 +2,7 @@
 module Main where
 
 import Control.Applicative
+import Control.Concurrent(forkIO)
 import Control.Monad(liftM, ap)
 import Control.Monad.Cont(ContT, runContT)
 import Control.Monad.Reader(ReaderT, runReaderT, ask)
@@ -13,7 +14,7 @@ import Data.String
 
 import Web.Scotty
 import qualified Network.Wai.Handler.Warp as Warp (run)
-import Network.HTTP.Types.Status(status200, status400, status403)
+import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
 type Post = String
@@ -60,8 +61,9 @@ runFIO k fa = case fa of
   IO ia ->
     ia
   RaiseLabel k' fa ->
-    if leq k k' then
-      forkIO (runFIO k' fa)
+    if leq k k' then do  --IO
+      forkIO (runFIO k' fa >> return ())
+      return ()
     else
       return ()
   New b -> do  --IO
@@ -72,7 +74,7 @@ runFIO k fa = case fa of
     return (list_last list k)
   Write (FIORef r) b -> do  --IO
     list <- readIORef r
-    writeIORef (list_write list k b)
+    writeIORef r (list_write list k b)
 
 -- Helpers for runFIO
 list_last :: [(Label, a)] -> Label -> a
@@ -105,7 +107,7 @@ check_credentials request =
     _ ->
       Nothing
 
-type App a token = FIORef a -> WAI.Request -> (WAI.Response -> FIO token) -> FIO ()
+type App a token = FIORef a -> WAI.Request -> (WAI.Response -> FIO token) -> FIO token
 
 --------------------------------
 --  Above is in the TCB.      --
@@ -119,7 +121,7 @@ data FList a =
 
 -- "facetbook" code must not use "runFIO" or "IO".
 -- This can be enforced using Haskell's module system.
-facetbook :: App FList token
+facetbook :: App (FList Post) token
 facetbook database request respond = do  --FIO
   if WAI.pathInfo request == ["login"] then
     respond $ WAI.responseLBS status200 [] "boring login page"
@@ -134,7 +136,7 @@ facetbook database request respond = do  --FIO
               Just (Just p) -> do  --FIO
                 d <- Read database
                 r <- New d
-                let d' = Cons p r
+                let d' = Cons (show p) r
                 Write database d'
                 respond $ WAI.responseLBS status200 [] "post successful"
               _ ->
@@ -147,9 +149,12 @@ facetbook database request respond = do  --FIO
                      return []
                    Cons p r -> do  --FIO
                      d <- Read r
-                     return (p : loop d)
+                     ps <- loop d
+                     return (p : ps)
             all_posts <- loop d
-            respond $ WAI.responseLBS status200 [] (escape all_posts)
+            respond $ WAI.responseLBS status200 [] (escape (show all_posts))
+          _ ->
+            respond $ WAI.responseLBS status404 [] "bad request"
 
 escape s = fromString s' where
   f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
@@ -167,9 +172,9 @@ escape s = fromString s' where
 --  Below is in the TCB.      --
 --------------------------------
 
-run_server :: Int -> App a -> IO ()
+run_server :: Int -> App (FList Post) WAI.ResponseReceived -> IO ()
 run_server port app = do  --IO
-  database <- runFIO Bot $ New undefined
+  database <- runFIO Bot $ New Nil
   Warp.run port $ \request respond -> do  --IO
     let fio_respond = \x -> IO $ respond x
     let handle k = runFIO k (app database request fio_respond)
@@ -184,15 +189,12 @@ run_server port app = do  --IO
             ["post"] ->
               case lookup "permissions" (WAI.queryString request) of
                 Just (Just permissions) ->
-                  if fromString then
-                    handle (Whitelist (username : permissions))
-                  else
-                    handle (Whitelist [username])
+                  handle (Whitelist (show username : words (show permissions)))
                 _ ->
-                  handle (Whitelist [username])
+                  handle (Whitelist [show username])
             ["read-all-posts"] ->
-              handle (Whitelist [username])
+              handle (Whitelist [show username])
             _ ->
-              handle (Whitelist [username])
+              handle (Whitelist [show username])
 
 main = run_server 3000 facetbook
