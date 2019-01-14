@@ -13,8 +13,8 @@ import Data.String
 
 import Web.Scotty
 import qualified Network.Wai.Handler.Warp as Warp (run)
-import Network.HTTP.Types.Status(status200)
-import Network.Wai
+import Network.HTTP.Types.Status(status200, status403)
+import qualified Network.Wai as WAI
 
 -- Database API:
 --   CreatePost(Username, Content)
@@ -30,6 +30,7 @@ data Label =
   | U User
   | Bot
   deriving (Show, Eq)
+{-
 leq :: LatticeState -> Label -> Label -> Bool
 leq s Bot    _      = True
 leq s _      Bot    = False
@@ -41,8 +42,12 @@ leq s (U u1) (U u2) =
   else
     let LS edges = s  in
     find ((u1,u2)==) edges /= Nothing
+-}
+leq :: Label -> Label -> Bool
+leq = undefined
 
 data Fac a where
+  Undefined ::                                 Fac a
   Raw     ::                         a      -> Fac a
   Fac     :: Label -> Fac a ->     Fac a    -> Fac a
   BindFac ::          Fac a -> (a -> Fac b) -> Fac b
@@ -55,6 +60,67 @@ instance Applicative Fac where
 instance Monad Fac where
   return = Raw
   (>>=) = BindFac
+
+data FIORef a =
+  FIORef (IORef (Fac a))
+data FIO a where
+  Return :: a -> FIO a
+  BindFIO :: FIO a -> (a -> FIO b) -> FIO b
+  Swap :: Fac (FIO a) -> FIO (Fac a)
+  New :: a -> FIO (FIORef a)
+  Read :: FIORef a -> FIO (Fac a)
+  Write :: FIORef a -> Fac a -> FIO ()
+
+instance Functor FIO where
+  fmap = liftM
+instance Applicative FIO where
+  pure  = return
+  (<*>) = ap
+instance Monad FIO where
+  return = Return
+  (>>=) = BindFIO
+
+runFIO :: Label -> FIO a -> IO (Fac a)
+runFIO k x = z x where
+ z :: FIO a -> IO (Fac a)
+ z x =
+  case x of
+    Return a ->
+      return (Raw a)
+    BindFIO a b -> do  --IO
+      c <- z a
+      d <- z $ Swap $ do  --Fac
+        e <- c
+        return (b e)
+      return $ BindFac d id
+    Swap Undefined ->
+      return Undefined
+    Swap (Raw a) -> do  --IO
+      b <- z a
+      return (Raw b)
+    Swap (BindFac Undefined b) ->
+      return Undefined
+    Swap (BindFac (Raw a) b) ->
+      z (Swap (b a))
+    Swap (BindFac (Fac k' a b) c) ->
+      z (Swap (Fac k' (BindFac a c) (BindFac b c)))
+    Swap (BindFac (BindFac a b) c) ->
+      z (Swap (BindFac a (\d -> BindFac (b d) c)))
+    Swap (Fac k' a b) -> do  --IO
+      if leq k' k then
+        z (Swap a)
+      else
+        z (Swap b)
+    New a -> do  --IO
+      b <- newIORef (Fac k (Raw a) Undefined)
+      return (Raw (FIORef b))
+    Read (FIORef a) -> do  --IO
+      b <- readIORef a
+      return (Raw b)
+    Write (FIORef a) b -> do  --IO
+      c <- readIORef a
+      writeIORef a (Fac k b c)
+      return (Raw ())
 
 project :: LatticeState -> Label -> Fac a -> a
 project lattice k1 = g where
@@ -100,11 +166,11 @@ escape s = fromString s' where
   s' = reverse (f s [])
 
 redirect_page username =
-  responseLBS status200 [] $ "\
+  WAI.responseLBS status200 [] $ "\
     \<meta http-equiv=\"refresh\" content=\"0; url=/read-all-posts/"<> escape username <>"\" />\
     \"
 login_page =
-  responseLBS status200 [] "boring login page"
+  WAI.responseLBS status200 [] "boring login page"
 display_main_page username d =
   html $ "\
     \Hello, "<> escape username <>"\
@@ -180,11 +246,59 @@ main_faceted = do  --IO
 -- So then what should the top-level interface be like?
 -- Built-in database functionality at the top-level?
 
-main_faceted = do
-  Warp.run 3000 $ \request respond -> do
-    Warp.run 3001 $ \request respond ->
-      respond $ responseLBS status200 [] "3001"
-    respond $ responseLBS status200 [] "3000"
+type App a = FIORef a -> WAI.Request -> (String -> FIO ()) -> FIO ()
+
+run_server :: Int -> App a -> IO ()
+run_server port_number handler = do  --IO
+  database_ioref <- newIORef Undefined
+  let database_fioref = FIORef database_ioref
+  Warp.run port_number $ \request respond -> do  --IO
+    let simplified_respond = \x -> respond $ WAI.responseLBS status200 [] x
+    let handle k = run_sandboxed k (handler database request simplified_respond)
+    case WAI.pathInfo request of
+      ["login"] ->
+
+        -- THE BIG QUESTION.
+        -- WHAT KIND OF SANDBOX DOES THIS CODE RUN IN?
+        -- WHAT KINDS OF CAPABILITIES DOES THIS CODE HAVE?
+
+        -- respond label = Bot
+        -- request label = Bot
+        -- PC = []
+      _ ->
+        case check_credentials request of
+          Just username ->
+            case WAI.pathInfo request of
+              ["post"] ->
+                -- respond label = username
+                -- request label = username + permissions
+                -- PC = [username + permissions]
+              ["read-all-posts"] ->
+                -- respond label = username
+                -- request label = Bot
+                -- PC = [username]
+              _ ->
+                -- respond label = username
+                -- request label = Bot
+                -- PC = [username]
+          Nothing ->
+            -- respond label = Bot
+            -- request label = Bot
+            -- PC = []
+            respond $ responseLBS status403 [] "Bad credentials"
+
+app_facetbook :: App (FList Post)
+app_facetbook database request respond = do  --FIO
+  case WAI.pathInfo request of
+    ["login"] ->
+      respond login_page
+    ["post"] -> do
+      x <- readFIORef database
+      let Just (Just p) = lookup "content" (WAI.queryString request)
+      writeFIORef database $ Cons p x
+
+main_faceted = do  --IO
+  run_server 3000 app_facetbook
 
 {-
   database <- newIORef (Raw Nil :: FDatabase)
@@ -252,4 +366,4 @@ main_nonfaceted = do  --IO
       display_main_page username posts
 -}
 
-main = main_faceted
+main = return ()
