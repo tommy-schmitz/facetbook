@@ -15,4 +15,10 @@ Pomodori
 Planning
 Planning (complete)
 Implement Trapeze in Haskell
-Implement Trapeze in Haskell (pomodoro in progress now)
+Implement Trapeze in Haskell
+Implement Trapeze in Haskell
+Implement Trapeze in Haskell
+Implement Trapeze in Haskell
+Implement Trapeze in Haskell
+Implement Trapeze in Haskell
+Implement Trapeze in Haskell (pomodoro in progress, since 12:21)
