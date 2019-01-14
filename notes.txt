@@ -1,0 +1,9 @@
+Implement Trapeze in Haskell
+  Get rid of Fac datatype. Not needed for Trapeze
+Compile and run code
+Verify behavior:
+  AUTOMATED test cases pass
+  Namely, a few different principals make some posts, and ...
+  those posts are only visible to specific other principals
+Transfer code into a Google doc, cleanup, export as pdf
+Have a pdf ready to print tomorrow
