@@ -7,3 +7,12 @@ Verify behavior:
   those posts are only visible to specific other principals
 Transfer code into a Google doc, cleanup, export as pdf
 Have a pdf ready to print tomorrow
+
+--------
+
+Pomodori
+
+Planning
+Planning (complete)
+Implement Trapeze in Haskell
+Implement Trapeze in Haskell (pomodoro in progress now)
