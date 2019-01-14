@@ -13,63 +13,33 @@ import Data.String
 
 import Web.Scotty
 import qualified Network.Wai.Handler.Warp as Warp (run)
-import Network.HTTP.Types.Status(status200, status403)
+import Network.HTTP.Types.Status(status200, status400, status403)
 import qualified Network.Wai as WAI
-
--- Database API:
---   CreatePost(Username, Content)
---   AddFriend(Username, Username)
---   RemoveFriend(Username, Username)
 
 type Post = String
 type User = String
 
-data LatticeState = LS [(User, User)]
 data Label =
-    Top
-  | U User
+    Whitelist [User]
   | Bot
   deriving (Show, Eq)
-{-
-leq :: LatticeState -> Label -> Label -> Bool
-leq s Bot    _      = True
-leq s _      Bot    = False
-leq s _      Top    = True
-leq s Top    _      = False
-leq s (U u1) (U u2) =
-  if u1==u2 then
-    True
-  else
-    let LS edges = s  in
-    find ((u1,u2)==) edges /= Nothing
--}
 leq :: Label -> Label -> Bool
 leq = undefined
 
-data Fac a where
-  Undefined ::                                 Fac a
-  Raw     ::                         a      -> Fac a
-  Fac     :: Label -> Fac a ->     Fac a    -> Fac a
-  BindFac ::          Fac a -> (a -> Fac b) -> Fac b
-
-instance Functor Fac where
-  fmap = liftM
-instance Applicative Fac where
-  pure  = return
-  (<*>) = ap
-instance Monad Fac where
-  return = Raw
-  (>>=) = BindFac
-
 data FIORef a =
-  FIORef (IORef (Fac a))
+  FIORef (IORef [(Label, a)])
+
+-- This FIO monad implements Trapeze (the serverless faceted system).
+-- It's quite different from our usual FIO monad.
+-- There is no Faceted monad anymore.
 data FIO a where
-  Return :: a -> FIO a
-  BindFIO :: FIO a -> (a -> FIO b) -> FIO b
-  Swap :: Fac (FIO a) -> FIO (Fac a)
-  New :: a -> FIO (FIORef a)
-  Read :: FIORef a -> FIO (Fac a)
-  Write :: FIORef a -> Fac a -> FIO ()
+  Return     :: a -> FIO a
+  Bind       :: FIO a -> (a -> FIO b) -> FIO b
+  IO         :: IO a -> FIO a                   -- Potentially unsafe, use with care
+  RaiseLabel :: Label -> FIO a -> FIO ()
+  New        :: a -> FIO (FIORef a)
+  Read       :: FIORef a -> FIO a
+  Write      :: FIORef a -> a -> FIO ()
 
 instance Functor FIO where
   fmap = liftM
@@ -78,82 +48,108 @@ instance Applicative FIO where
   (<*>) = ap
 instance Monad FIO where
   return = Return
-  (>>=) = BindFIO
+  (>>=) = Bind
 
-runFIO :: Label -> FIO a -> IO (Fac a)
-runFIO k x = z x where
- z :: FIO a -> IO (Fac a)
- z x =
-  case x of
-    Return a ->
-      return (Raw a)
-    BindFIO a b -> do  --IO
-      c <- z a
-      d <- z $ Swap $ do  --Fac
-        e <- c
-        return (b e)
-      return $ BindFac d id
-    Swap Undefined ->
-      return Undefined
-    Swap (Raw a) -> do  --IO
-      b <- z a
-      return (Raw b)
-    Swap (BindFac Undefined b) ->
-      return Undefined
-    Swap (BindFac (Raw a) b) ->
-      z (Swap (b a))
-    Swap (BindFac (Fac k' a b) c) ->
-      z (Swap (Fac k' (BindFac a c) (BindFac b c)))
-    Swap (BindFac (BindFac a b) c) ->
-      z (Swap (BindFac a (\d -> BindFac (b d) c)))
-    Swap (Fac k' a b) -> do  --IO
-      if leq k' k then
-        z (Swap a)
-      else
-        z (Swap b)
-    New a -> do  --IO
-      b <- newIORef (Fac k (Raw a) Undefined)
-      return (Raw (FIORef b))
-    Read (FIORef a) -> do  --IO
-      b <- readIORef a
-      return (Raw b)
-    Write (FIORef a) b -> do  --IO
-      c <- readIORef a
-      writeIORef a (Fac k b c)
-      return (Raw ())
-
-project :: LatticeState -> Label -> Fac a -> a
-project lattice k1 = g where
-  g :: Fac a -> a
-  g (Raw a) =
-    a
-  g (Fac k2 fa1 fa2) =
-    if leq lattice k2 k1 then
-      g fa1
+runFIO :: Label -> FIO a -> IO a
+runFIO k fa = case fa of
+  Return a -> do  --IO
+    return a
+  Bind fb c -> do  --IO
+    b <- runFIO k fb
+    runFIO k (c b)
+  IO ia ->
+    ia
+  RaiseLabel k' fa ->
+    if leq k k' then
+      forkIO (runFIO k' fa)
     else
-      g fa2
-  g (BindFac fb1 c) =
-    g (c (g fb1))
+      return ()
+  New b -> do  --IO
+    r <- newIORef [(k, b)]
+    return (FIORef r)
+  Read (FIORef r) -> do  --IO
+    list <- readIORef r
+    return (list_last list k)
+  Write (FIORef r) b -> do  --IO
+    list <- readIORef r
+    writeIORef (list_write list k b)
 
--------------------------------
---  Above is in TCB          --
--------------------------------
---  Below may not be in TCB  --
--------------------------------
+-- Helpers for runFIO
+list_last :: [(Label, a)] -> Label -> a
+list_last [] k =
+  undefined
+list_last ((k',a):list) k =
+  if leq k' k then
+    a
+  else
+    list_last list k
+list_remove :: [(Label, a)] -> Label -> [(Label, a)]
+list_remove [] k =
+  []
+list_remove ((k',a):list) k =
+  if leq k k' then
+    list_remove list k
+  else
+    (k',a) : list_remove list k
+list_write :: [(Label, a)] -> Label -> a -> [(Label, a)]
+list_write list k a =
+  (k,a) : list_remove list k
+
+-- This is the password-checking function.
+-- Currently, it takes the username from the URL parameters.
+-- Currently, it always succeeds without any password.
+check_credentials request =
+  case lookup "username" (WAI.queryString request) of
+    Just (Just username) ->
+      Just username
+    _ ->
+      Nothing
+
+type App a token = FIORef a -> WAI.Request -> (WAI.Response -> FIO token) -> FIO ()
+
+--------------------------------
+--  Above is in the TCB.      --
+--------------------------------
+--  Below is not in the TCB.  --
+--------------------------------
 
 data FList a =
     Nil
-  | Cons a (Fac (FList a))
+  | Cons a (FIORef (FList a))
 
-flatten :: Fac (FList a) -> Fac [a]
-flatten ffl = do  --Fac
-  fl <- ffl
-  case fl of
-    Nil ->
-      Raw []
-    Cons x ffl -> do  --Fac
-      xs <- flatten ffl
-      Raw (x:xs)
+-- "facetbook" code must not use "runFIO" or "IO".
+-- This can be enforced using Haskell's module system.
+facetbook :: App FList token
+facetbook database request respond = do  --FIO
+  if WAI.pathInfo request == ["login"] then
+    respond $ WAI.responseLBS status200 [] "boring login page"
+  else
+    case check_credentials request of
+      Nothing ->
+        respond $ WAI.responseLBS status403 [] "bad credentials"
+      Just username ->
+        case WAI.pathInfo request of
+          ["post"] ->
+            case lookup "content" (WAI.queryString request) of
+              Just (Just p) -> do  --FIO
+                d <- Read database
+                r <- New d
+                let d' = Cons p r
+                Write database d'
+                respond $ WAI.responseLBS status200 [] "post successful"
+              _ ->
+                respond $ WAI.responseLBS status400 [] "bad post"
+          ["read-all-posts"] -> do
+            d <- Read database
+            let loop flist =
+                 case flist of
+                   Nil      -> do  --FIO
+                     return []
+                   Cons p r -> do  --FIO
+                     d <- Read r
+                     return (p : loop d)
+            all_posts <- loop d
+            respond $ WAI.responseLBS status200 [] (escape all_posts)
 
 escape s = fromString s' where
   f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
@@ -165,205 +161,38 @@ escape s = fromString s' where
   f []        a = a
   s' = reverse (f s [])
 
-redirect_page username =
-  WAI.responseLBS status200 [] $ "\
-    \<meta http-equiv=\"refresh\" content=\"0; url=/read-all-posts/"<> escape username <>"\" />\
-    \"
-login_page =
-  WAI.responseLBS status200 [] "boring login page"
-display_main_page username d =
-  html $ "\
-    \Hello, "<> escape username <>"\
-    \<form method=\"post\" action=\"/add-friend\">\
-    \  Username: <input name=\"username\" value=\""<> escape username <>"\"></input><br />\
-    \  Add friend: <input name=\"friend\" value=\"\"></input><br />\
-    \  <input type=\"submit\"></input><br />\
-    \</form>\
-    \<hr />\
-    \<form method=\"post\" action=\"/remove-friend\">\
-    \  Username: <input name=\"username\" value=\""<> escape username <>"\"></input><br />\
-    \  Remove friend: <input name=\"enemy\" value=\"\"></input><br />\
-    \  <input type=\"submit\"></input><br />\
-    \</form>\
-    \<hr />\
-    \<form method=\"post\" action=\"/post\">\
-    \  Username: <input name=\"username\" value=\""<> escape username <>"\"></input><br />\
-    \  New post:<br /><textarea name=\"content\"></textarea><br />\
-    \  <input type=\"submit\"></input><br />\
-    \</form>\
-    \<hr />\
-    \Your view of the database:<br />\
-    \"<> escape (show d) <> "<br /><br />\
-    \"
-
--------------------------------
---  Above may not be in TCB  --
--------------------------------
---  Below is in TCB          --
--------------------------------
-
--- Faceted section --
-
-type FDatabase = Fac (FList Post)
-
-{-
-faceted_handler database username request =
-  let req = pathInfo request !! 1  in
-  if req == "read-all-posts" then do
-    flist <- readIORef database
-    posts <- lift $ project lattice (U username) (flatten flist)
-    display_main_page username posts
-  else if req == "post" then do
-    let new_posts = Fac (U username) (Raw (Cons p posts)) posts
-    lift $ writeIORef database new_posts
-    display_redirect_page username
-  else
-    undefined
-
--- This is the password-checker function.
--- Currently, password-checking always succeeds.
-check_credentials :: Request -> Maybe Username
-check_credentials request =
-  Just (pathInfo request !! 0)
-
-main_faceted = do  --IO
-  database <- newIORef (Raw Nil)
-  Warp.run 3000 $ \request respond -> do  --IO
-    if ["login"] == pathInfo request then
-      respond login_page
-    else
-      case check_credentials request of
-        Just username ->
-          let response = faceted_handler database username request  in
-          respond login_page
-        Nothing ->
-          respond login_page
--}
-
--- An issue.
--- Should the FIO interface allow running a server inside a server?
--- Answer: no, who cares about that?
--- So then what should the top-level interface be like?
--- Built-in database functionality at the top-level?
-
-type App a = FIORef a -> WAI.Request -> (String -> FIO ()) -> FIO ()
+--------------------------------
+--  Above is not in the TCB.  --
+--------------------------------
+--  Below is in the TCB.      --
+--------------------------------
 
 run_server :: Int -> App a -> IO ()
-run_server port_number handler = do  --IO
-  database_ioref <- newIORef Undefined
-  let database_fioref = FIORef database_ioref
-  Warp.run port_number $ \request respond -> do  --IO
-    let simplified_respond = \x -> respond $ WAI.responseLBS status200 [] x
-    let handle k = run_sandboxed k (handler database request simplified_respond)
-    case WAI.pathInfo request of
-      ["login"] ->
+run_server port app = do  --IO
+  database <- runFIO Bot $ New undefined
+  Warp.run port $ \request respond -> do  --IO
+    let fio_respond = \x -> IO $ respond x
+    let handle k = runFIO k (app database request fio_respond)
+    if WAI.pathInfo request == ["login"] then
+      handle Bot
+    else
+      case check_credentials request of
+        Nothing ->
+          handle Bot
+        Just username ->
+          case WAI.pathInfo request of
+            ["post"] ->
+              case lookup "permissions" (WAI.queryString request) of
+                Just (Just permissions) ->
+                  if fromString then
+                    handle (Whitelist (username : permissions))
+                  else
+                    handle (Whitelist [username])
+                _ ->
+                  handle (Whitelist [username])
+            ["read-all-posts"] ->
+              handle (Whitelist [username])
+            _ ->
+              handle (Whitelist [username])
 
-        -- THE BIG QUESTION.
-        -- WHAT KIND OF SANDBOX DOES THIS CODE RUN IN?
-        -- WHAT KINDS OF CAPABILITIES DOES THIS CODE HAVE?
-
-        -- respond label = Bot
-        -- request label = Bot
-        -- PC = []
-      _ ->
-        case check_credentials request of
-          Just username ->
-            case WAI.pathInfo request of
-              ["post"] ->
-                -- respond label = username
-                -- request label = username + permissions
-                -- PC = [username + permissions]
-              ["read-all-posts"] ->
-                -- respond label = username
-                -- request label = Bot
-                -- PC = [username]
-              _ ->
-                -- respond label = username
-                -- request label = Bot
-                -- PC = [username]
-          Nothing ->
-            -- respond label = Bot
-            -- request label = Bot
-            -- PC = []
-            respond $ responseLBS status403 [] "Bad credentials"
-
-app_facetbook :: App (FList Post)
-app_facetbook database request respond = do  --FIO
-  case WAI.pathInfo request of
-    ["login"] ->
-      respond login_page
-    ["post"] -> do
-      x <- readFIORef database
-      let Just (Just p) = lookup "content" (WAI.queryString request)
-      writeFIORef database $ Cons p x
-
-main_faceted = do  --IO
-  run_server 3000 app_facetbook
-
-{-
-  database <- newIORef (Raw Nil :: FDatabase)
-  scotty 3000 $ do  --Scotty
-    get "login" $ do  --ScottyIO
-      display_login_page
-    notFound $ do  --ScottyIO
-      username <- param "username"
-      
-    post "/post" $ do  --ScottyIO
-      username <- param "username"
-      content <- param "content"
-      (posts, lattice) <- lift $ readIORef database
-      let new_posts = Fac (U username) (Raw (Cons content posts)) posts
-      lift $ writeIORef database (new_posts, lattice)
-      display_redirect_page username
-    get "/read-all-posts/:username" $ do  --ScottyIO
-      username <- param "username"
-      (flist, lattice) <- lift $ readIORef database
-      posts <- lift $ project lattice (U username) (flatten flist)
-      display_main_page username posts
--}
-
-----------------------------
-
--- Non-faceted section --
-
-{-
-
-type Database = ([(Label, Post)], LatticeState)
-
-filter_database :: User -> Database -> [Post]
-filter_database username (posts, lattice) =
-  let x = filter (\(k,p) -> leq lattice k (U username)) posts  in
-  map snd x
-
-main_nonfaceted = do  --IO
-  database <- newIORef ([], LS [])
-  scotty 3000 $ do  --Scotty
-    post "/add-friend" $ do  --ScottyIO
-      username <- param "username"
-      friend <- param "friend"
-      (posts, LS lattice) <- lift $ readIORef database
-      let new_lattice = (username, friend) : lattice
-      database <- lift $ writeIORef database (posts, LS new_lattice)
-      display_redirect_page username
-    post "/remove-friend" $ do  --ScottyIO
-      username <- param "username"
-      enemy <- param "enemy"
-      (posts, LS lattice) <- lift $ readIORef database
-      let new_lattice = filter (/= (username, enemy)) lattice
-      database <- lift $ writeIORef database (posts, LS new_lattice)
-      display_redirect_page username
-    post "/post" $ do  --ScottyIO
-      username <- param "username"
-      content <- param "content"
-      (posts, lattice) <- lift $ readIORef database
-      let new_posts = (U username, content) : posts
-      lift $ writeIORef database (new_posts, lattice)
-      display_redirect_page username
-    get "/read-all-posts/:username" $ do  --ScottyIO
-      username <- param "username"
-      db <- lift $ readIORef database
-      let posts = filter_database username db
-      display_main_page username posts
--}
-
-main = return ()
+main = run_server 3000 facetbook
