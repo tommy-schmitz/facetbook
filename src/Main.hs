@@ -4,15 +4,12 @@ module Main where
 import Control.Applicative
 import Control.Concurrent(forkIO)
 import Control.Monad(liftM, ap)
-import Control.Monad.Cont(ContT, runContT)
-import Control.Monad.Reader(ReaderT, runReaderT, ask)
-import Control.Monad.Trans.Class(lift)
+import Data.ByteString.Char8(unpack)
 import Data.IORef
 import Data.Monoid((<>))
 import Data.List(find)
 import Data.String
 
-import Web.Scotty
 import qualified Network.Wai.Handler.Warp as Warp (run)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
@@ -25,7 +22,12 @@ data Label =
   | Bot
   deriving (Show, Eq)
 leq :: Label -> Label -> Bool
-leq = undefined
+leq Bot            _               = True
+leq _              Bot             = False
+leq _              (Whitelist [])  = True
+leq (Whitelist []) _               = False
+leq (Whitelist us) (Whitelist [u]) = find (u==) us /= Nothing
+leq k1             k2              = k1==k2
 
 data FIORef a =
   FIORef (IORef [(Label, a)])
@@ -109,69 +111,6 @@ check_credentials request =
 
 type App a token = FIORef a -> WAI.Request -> (WAI.Response -> FIO token) -> FIO token
 
---------------------------------
---  Above is in the TCB.      --
---------------------------------
---  Below is not in the TCB.  --
---------------------------------
-
-data FList a =
-    Nil
-  | Cons a (FIORef (FList a))
-
--- "facetbook" code must not use "runFIO" or "IO".
--- This can be enforced using Haskell's module system.
-facetbook :: App (FList Post) token
-facetbook database request respond = do  --FIO
-  if WAI.pathInfo request == ["login"] then
-    respond $ WAI.responseLBS status200 [] "boring login page"
-  else
-    case check_credentials request of
-      Nothing ->
-        respond $ WAI.responseLBS status403 [] "bad credentials"
-      Just username ->
-        case WAI.pathInfo request of
-          ["post"] ->
-            case lookup "content" (WAI.queryString request) of
-              Just (Just p) -> do  --FIO
-                d <- Read database
-                r <- New d
-                let d' = Cons (show p) r
-                Write database d'
-                respond $ WAI.responseLBS status200 [] "post successful"
-              _ ->
-                respond $ WAI.responseLBS status400 [] "bad post"
-          ["read-all-posts"] -> do
-            d <- Read database
-            let loop flist =
-                 case flist of
-                   Nil      -> do  --FIO
-                     return []
-                   Cons p r -> do  --FIO
-                     d <- Read r
-                     ps <- loop d
-                     return (p : ps)
-            all_posts <- loop d
-            respond $ WAI.responseLBS status200 [] (escape (show all_posts))
-          _ ->
-            respond $ WAI.responseLBS status404 [] "bad request"
-
-escape s = fromString s' where
-  f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
-  f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
-  f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
-  f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
-  f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
-  f (c   :cs) a = f cs (c:a)
-  f []        a = a
-  s' = reverse (f s [])
-
---------------------------------
---  Above is not in the TCB.  --
---------------------------------
---  Below is in the TCB.      --
---------------------------------
-
 run_server :: Int -> App (FList Post) WAI.ResponseReceived -> IO ()
 run_server port app = do  --IO
   database <- runFIO Bot $ New Nil
@@ -189,12 +128,75 @@ run_server port app = do  --IO
             ["post"] ->
               case lookup "permissions" (WAI.queryString request) of
                 Just (Just permissions) ->
-                  handle (Whitelist (show username : words (show permissions)))
+                  handle (Whitelist (unpack username : words (unpack permissions)))
                 _ ->
-                  handle (Whitelist [show username])
+                  handle (Whitelist [unpack username])
             ["read-all-posts"] ->
-              handle (Whitelist [show username])
+              handle (Whitelist [unpack username])
             _ ->
-              handle (Whitelist [show username])
+              handle (Whitelist [unpack username])
 
 main = run_server 3000 facetbook
+
+--------------------------------
+--  Above is in the TCB.      --
+--------------------------------
+--  Below is not in the TCB.  --
+--------------------------------
+
+data FList a =
+    Nil
+  | Cons a (FIORef (FList a))
+
+-- "facetbook" code must not use "runFIO" or "IO".
+-- This can be enforced using Haskell's module system.
+facetbook :: App (FList Post) token
+facetbook database request respond = do  --FIO
+  let headers = [("Content-Type", "text/html")]
+  if WAI.pathInfo request == ["login"] then
+    respond $ WAI.responseLBS status200 headers "boring login page"
+  else
+    case check_credentials request of
+      Nothing ->
+        respond $ WAI.responseLBS status403 headers "bad credentials"
+      Just username ->
+        case WAI.pathInfo request of
+          ["post"] ->
+            case lookup "content" (WAI.queryString request) of
+              Just (Just p) -> do  --FIO
+                case lookup "permissions" (WAI.queryString request) of
+                  Just (Just permissions) -> do
+                    d <- Read database
+                    r <- New d
+                    let d' = Cons (unpack p) r
+                    Write database d'
+                    respond $ WAI.responseLBS status200 headers "post successful"
+                  _ ->
+                    respond $ WAI.responseLBS status400 headers "bad post (missing permissions)"
+              _ ->
+                respond $ WAI.responseLBS status400 headers "bad post (missing content)"
+          ["read-all-posts"] -> do
+            let loop flist =
+                 case flist of
+                   Nil -> do  --FIO
+                     return []
+                   Cons p r -> do  --FIO
+                     d <- Read r
+                     ps <- loop d
+                     return (p : ps)
+            all_posts <- do  --FIO
+              d <- Read database
+              loop d
+            respond $ WAI.responseLBS status200 headers $ escape (show all_posts)
+          _ ->
+            respond $ WAI.responseLBS status404 headers "bad request"
+
+escape s = fromString s' where
+  f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
+  f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
+  f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
+  f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
+  f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
+  f (c   :cs) a = f cs (c:a)
+  f []        a = a
+  s' = reverse (f s [])

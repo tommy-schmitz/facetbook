@@ -22,4 +22,7 @@ Implement Trapeze in Haskell
 Implement Trapeze in Haskell
 Implement Trapeze in Haskell
 Implement Trapeze in Haskell (complete?)
-Compile and run code (pomodoro in progress, started at 12:53)
+Compile and run code
+Compile and run code
+Compile and run code
+Create pdf (pomodoro in progress from 2:30)

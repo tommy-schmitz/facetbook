@@ -23,4 +23,5 @@ executable facetbook
                        scotty,
                        warp,
                        http-types,
-                       wai
+                       wai,
+                       bytestring
