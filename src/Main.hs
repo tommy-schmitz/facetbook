@@ -114,11 +114,9 @@ check_credentials request =
 
 type App a token = FIORef a -> WAI.Request -> (WAI.Response -> FIO token) -> FIO token
 
-run_server :: Int -> App (FIORef (FList Post)) WAI.ResponseReceived -> IO ()
+run_server :: Int -> App (FList Post) WAI.ResponseReceived -> IO ()
 run_server port app = do  --IO
-  database <- runFIO Bot $ do  --FIO
-    r <- New Nil
-    New r
+  database <- runFIO Bot $ New Nil
   Warp.run port $ \request respond -> do  --IO
     let fio_respond = \x -> IO $ respond x
     let handle k = runFIO k (app database request fio_respond)
@@ -155,7 +153,7 @@ data FList a =
 
 -- "facetbook" code must not use "runFIO" or "IO".
 -- This can be enforced using Haskell's module system.
-facetbook :: App (FIORef (FList Post)) token
+facetbook :: App (FList Post) token
 facetbook database request respond = do  --FIO
   let headers = [("Content-Type", "text/html")]
   if WAI.pathInfo request == ["login"] then
@@ -171,8 +169,9 @@ facetbook database request respond = do  --FIO
               Just (Just p) -> do  --FIO
                 case lookup "permissions" (WAI.queryString request) of
                   Just (Just permissions) -> do
-                    r <- Read database
-                    d' <- New (Cons (unpack p) r)
+                    d <- Read database
+                    r <- New d
+                    let d' = Cons (unpack p) r
                     Write database d'
                     respond $ WAI.responseLBS status200 headers "post successful"
                   _ ->
@@ -189,9 +188,8 @@ facetbook database request respond = do  --FIO
                      ps <- loop d
                      return (p : ps)
             all_posts <- do  --FIO
-              r <- Read database
-              flist <- Read r
-              loop flist
+              d <- Read database
+              loop d
             respond $ WAI.responseLBS status200 headers $ escape (show all_posts)
           _ ->
             respond $ WAI.responseLBS status404 headers "bad request"
