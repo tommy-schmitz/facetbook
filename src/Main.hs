@@ -42,6 +42,7 @@ data FIO a where
   RaiseLabel :: Label -> FIO a -> FIO ()
   New        :: a -> FIO (FIORef a)
   Read       :: FIORef a -> FIO a
+  --Read       :: FIORef a -> FIO [(Label,a)]
   Write      :: FIORef a -> a -> FIO ()
 
 instance Functor FIO where
@@ -82,9 +83,11 @@ runFIO k fa = case fa of
 list_last :: [(Label, a)] -> Label -> a
 list_last [] k =
   undefined
+  --[]
 list_last ((k',a):list) k =
   if leq k' k then
     a
+    --(k',a):list_last list k
   else
     list_last list k
 list_remove :: [(Label, a)] -> Label -> [(Label, a)]
