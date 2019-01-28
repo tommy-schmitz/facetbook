@@ -2,15 +2,12 @@
 module Main where
 
 import Control.Applicative
-import Control.Concurrent(forkIO)
-import Control.Monad(liftM, join, ap)
+import Control.Monad(liftM, ap)
 import Data.ByteString.Char8(unpack)
 import Data.IORef
-import Data.Monoid((<>))
 import Data.List(find)
-import Data.String
-
-import qualified Network.Wai.Handler.Warp as Warp (run)
+import Data.String(fromString)
+import qualified Network.Wai.Handler.Warp as Warp(run)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
@@ -30,19 +27,11 @@ leq (Whitelist []) _               = False
 leq (Whitelist us) (Whitelist [u]) = find (u==) us /= Nothing
 leq k1             k2              = k1==k2
 
-instance Show WAI.ResponseReceived where
-  show _ = "ResponseReceived"
-
 data Fac a where
   Undefined :: Fac a
   Raw :: a -> Fac a
   Fac :: Label -> Fac a -> Fac a -> Fac a
   BindFac :: Fac a -> (a -> Fac b) -> Fac b
-instance Show a => Show (Fac a) where
-  show Undefined = "Undefined"
-  show (Raw a) = "Raw (" ++ show a ++ ")"
-  show (Fac k a b) = "Fac (" ++ show k ++ ") (" ++ show a ++ ") (" ++ show b ++ ")"
-  show (BindFac a b) = "BindFac (...)"
 instance Functor Fac where
   fmap = liftM
 instance Applicative Fac where
@@ -55,15 +44,11 @@ instance Monad Fac where
 data FIORef a =
   FIORef (IORef (Fac a))
 
--- This FIO monad implements Trapeze (the serverless faceted system).
--- It's quite different from our usual FIO monad.
--- There is no Faceted monad anymore.
 data FIO a where
   Return     :: a -> FIO a
   BindFIO    :: FIO a -> (a -> FIO b) -> FIO b
   Swap       :: Fac (FIO a) -> FIO (Fac a)
   IO         :: IO a -> FIO a                   -- Potentially unsafe, use with care
-  RaiseLabel :: Label -> FIO a -> FIO ()
   New        :: a -> FIO (FIORef a)
   Read       :: FIORef a -> FIO (Fac a)
   Write      :: FIORef a -> Fac a -> FIO ()
@@ -129,7 +114,7 @@ runFIO pc x = z x where
         else if pc `consistentWithSubtracting` k then
           z (Swap b)
         else
-          error $ "Errrr " ++ show k
+          undefined
       IO ia -> do
         a <- ia
         return a
@@ -156,25 +141,14 @@ type App a = FIORef a -> WAI.Request -> (WAI.Response -> FIO ()) -> FIO ()
 
 run_server :: Int -> App (FList Post) -> IO ()
 run_server port app = do  --IO
-  database <- runFIO (UpwardClosure Bot) $ New Nil
+  database <- runFIO Everything $ New Nil
   Warp.run port $ \request respond -> do  --IO
     let fio_respond = \x -> IO $ do  --IO
-         token <- respond x
+         respond x
          return ()
     let handle pc = do  --IO
          runFIO pc (app database request fio_respond)
---         respond $ WAI.responseLBS status404 [] "baddd"
          return ResponseReceived
-{-
-         ftoken <- runFIO k $ Swap $ BindFac ftoken (\x -> Raw (return x))
-         putStrLn $ "Here"
-         putStrLn $ show ftoken
-         let Raw token = ftoken
-         return token
--}
---    if WAI.pathInfo request == ["favicon.ico"] then
---      respond $ WAI.responseLBS status403 [] ""
---    else
     if WAI.pathInfo request == ["login"] then
       handle Everything
     else
@@ -216,17 +190,6 @@ flatten ffl = do  --Fac
       xs <- flatten ffl
       Raw (x:xs)
 
-myprint :: Show a => Fac a -> String
-myprint x =
-  case x of
-    BindFac Undefined y -> "Undefined"
-    BindFac (Raw a) y -> myprint (y a)
-    BindFac (Fac k a b) y -> myprint (Fac k (BindFac a y) (BindFac b y))
-    BindFac (BindFac a b) y -> myprint (BindFac a (\x -> BindFac (b x) y))
-    Raw x -> "Raw (" ++ show x ++ ")"
-    Undefined -> "Undefined"
-    Fac k a b -> "Fac (" ++ show k ++ ") (" ++ myprint a ++ ") (" ++ myprint b ++ ")"
-
 -- "facetbook" code must not use "runFIO" or "IO :: IO a -> FIO a".
 -- This can be enforced using Haskell's module system.
 facetbook :: App (FList Post)
@@ -253,17 +216,12 @@ facetbook database request respond = do  --FIO
                     respond $ WAI.responseLBS status400 headers "bad post (missing permissions)"
               _ ->
                 respond $ WAI.responseLBS status400 headers "bad post (missing content)"
-          ["read-all-posts"] -> do
+          ["read-all-posts"] -> do  --FIO
             d <- Read database
-            IO $ putStrLn "11"
-            IO $ putStrLn $ myprint (flatten d)
             Swap $ do  --Fac
               all_posts <- flatten d
---              all_posts <- BindFac (Raw Nil) (\x -> Raw "tommyhere")
               Raw $ do  --FIO
                 respond $ WAI.responseLBS status200 headers $ escape (show all_posts)
-                IO $ putStrLn "22"
-            IO $ putStrLn "33"
             return ()
           _ ->
             respond $ WAI.responseLBS status404 headers "bad request"
