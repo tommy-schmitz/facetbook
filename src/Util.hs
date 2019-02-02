@@ -14,7 +14,7 @@ import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 import qualified Network.Wai as WAI
 import Data.List(find)
 
-import FIO(Lattice(leq, bot), FIORef, FIO)
+import FIO(Lattice(leq, bot), FIORef, FIO, Fac)
 
 type Post = String
 type User = String
@@ -43,3 +43,7 @@ check_credentials request =
       Just username
     _ ->
       Nothing
+
+data FList a =
+    Nil
+  | Cons a (Fac Label (FList a))

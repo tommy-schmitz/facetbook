@@ -14,12 +14,32 @@ import Data.ByteString.Char8(unpack)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(App, Post, check_credentials, Label)
+import Util(App, Post, User, check_credentials, Label, FList(Nil, Cons))
 import FIO(FIO(Read, Write, Swap), Fac)
 
-data FList a =
-    Nil
-  | Cons a (Fac Label (FList a))
+headers = [("Content-Type", "text/html")]
+
+login :: App (FList Post)
+login database request respond =
+  respond $ WAI.responseLBS status200 headers "boring login page"
+
+authentication_failed :: App (FList Post)
+authentication_failed database request respond =
+  respond $ WAI.responseLBS status403 headers "bad credentials"
+
+post :: [User] -> App (FList Post)
+post users database request respond =
+  case lookup "content" (WAI.queryString request) of
+    Just (Just p) -> do  --FIO
+      d <- Read database
+      let d' = return $ Cons (unpack p) d
+      Write database d'
+      respond $ WAI.responseLBS status200 headers "post successful"
+    _ ->
+      respond $ WAI.responseLBS status400 headers "bad post (missing content)"
+post_err_permissions :: App (FList Post)
+post_err_permissions database request respond =
+  respond $ WAI.responseLBS status400 headers "bad post (missing permissions)"
 
 flatten :: Fac Label (FList a) -> Fac Label [a]
 flatten ffl = do  --Fac
@@ -31,41 +51,18 @@ flatten ffl = do  --Fac
       xs <- flatten ffl
       return (x:xs)
 
--- "facetbook" code must not use "runFIO" or "IO :: IO a -> FIO a".
--- This can be enforced using Haskell's module system.
-facetbook :: App (FList Post)
-facetbook database request respond = do  --FIO
-  let headers = [("Content-Type", "text/html")]
-  if WAI.pathInfo request == ["login"] then
-    respond $ WAI.responseLBS status200 headers "boring login page"
-  else
-    case check_credentials request of
-      Nothing ->
-        respond $ WAI.responseLBS status403 headers "bad credentials"
-      Just username ->
-        case WAI.pathInfo request of
-          ["post"] ->
-            case lookup "content" (WAI.queryString request) of
-              Just (Just p) -> do  --FIO
-                case lookup "permissions" (WAI.queryString request) of
-                  Just (Just permissions) -> do  --FIO
-                    d <- Read database
-                    let d' = return $ Cons (unpack p) d
-                    Write database d'
-                    respond $ WAI.responseLBS status200 headers "post successful"
-                  _ ->
-                    respond $ WAI.responseLBS status400 headers "bad post (missing permissions)"
-              _ ->
-                respond $ WAI.responseLBS status400 headers "bad post (missing content)"
-          ["read-all-posts"] -> do  --FIO
-            d <- Read database
-            Swap $ do  --Fac
-              all_posts <- flatten d
-              return $ do  --FIO
-                respond $ WAI.responseLBS status200 headers $ escape (show all_posts)
-            return ()
-          _ ->
-            respond $ WAI.responseLBS status404 headers "bad request"
+read_all_posts :: App (FList Post)
+read_all_posts database request respond = do  --FIO
+  d <- Read database
+  Swap $ do  --Fac
+    all_posts <- flatten d
+    return $ do  --FIO
+      respond $ WAI.responseLBS status200 headers $ escape (show all_posts)
+  return ()
+
+bad_request :: App (FList Post)
+bad_request database request respond =
+  respond $ WAI.responseLBS status404 headers "bad request"
 
 escape s = fromString s' where
   f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)

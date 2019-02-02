@@ -56,23 +56,23 @@ instance Monad (FIO l) where
 data PC l =
     UpwardClosure l
   | Singleton l
-  | Everything
+  | AllViews
 
 ffacet :: PC l -> Fac l a -> Fac l a -> Fac l a
 ffacet pc a b =
   case pc of
-    Everything      -> a
+    AllViews        -> a
     UpwardClosure k -> Fac k a b
     Singleton k     -> undefined
 
 consistentWithAdding pc k =
   case pc of
-    Everything -> True
+    AllViews -> True
     UpwardClosure k' -> True
     Singleton k' -> leq k k'
 consistentWithSubtracting pc k =
   case pc of
-    Everything -> k /= bot
+    AllViews -> k /= bot
     UpwardClosure k' -> not (leq k k')
     Singleton k' -> not (leq k k')
 
