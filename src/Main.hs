@@ -38,19 +38,20 @@ main = do  --IO
           sandbox AllViews $
               FacetBook.authentication_failed
         Just username ->
+          let user = unpack username  in
           case WAI.pathInfo request of
             ["post"] ->
               case lookup "permissions" (WAI.queryString request) of
                 Just (Just permissions) ->
                   let users = words (unpack permissions)  in
-                  sandbox (UpwardClosure (Whitelist (unpack username : users))) $
-                      FacetBook.post users
+                  sandbox (UpwardClosure (Whitelist (user : users))) $
+                      FacetBook.post user users
                 _ ->
                   sandbox (Singleton (Whitelist [unpack username])) $
                       FacetBook.post_err_permissions
             ["read-all-posts"] ->
               sandbox (Singleton (Whitelist [unpack username])) $
-                  FacetBook.read_all_posts
+                  FacetBook.read_all_posts user
             _ ->
               sandbox (Singleton (Whitelist [unpack username])) $
                   FacetBook.bad_request
