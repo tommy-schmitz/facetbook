@@ -14,13 +14,13 @@ import qualified Network.Wai.Handler.Warp as Warp(run)
 import qualified Network.Wai as WAI
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 
-import Util(check_credentials, Post, Label(Whitelist), App, FList(Nil))
+import Util(check_credentials, Post, Label(Whitelist, Bot), App, FList(Nil), Database(Database, game_list, posts))
 import FIO(Lattice(leq), FIO(IO, New), Fac, FIORef, runFIO, PC(AllViews, Singleton, UpwardClosure))
-import qualified FacetBook as FacetBook(login, authentication_failed, post, post_err_permissions, read_all_posts, bad_request)
+import qualified FacetBook as FacetBook(login, authentication_failed, post, post_err_permissions, read_all_posts, other_request)
 
 main = do  --IO
   database <- runFIO AllViews $ do  --FIO
-    New Nil
+    New $ Database {game_list = [], posts = return Nil}
   let port = 3000
   Warp.run port $ \request respond -> do  --IO
     let fio_respond = \x -> IO $ do  --IO
@@ -53,5 +53,5 @@ main = do  --IO
               sandbox (Singleton (Whitelist [unpack username])) $
                   FacetBook.read_all_posts user
             _ ->
-              sandbox (Singleton (Whitelist [unpack username])) $
-                  FacetBook.bad_request
+              sandbox (Singleton Bot) $
+                  FacetBook.other_request user

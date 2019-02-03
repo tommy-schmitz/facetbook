@@ -47,3 +47,14 @@ check_credentials request =
 data FList a =
     Nil
   | Cons a (Fac Label (FList a))
+
+data TicTacToe = TicTacToe {
+  players :: [User],
+  player_assignment :: [Maybe Bool],
+  board :: Int -> Int -> Maybe Bool,
+  sequence_number :: Int
+}
+data Database = Database {
+  game_list :: [TicTacToe],
+  posts :: Fac Label (FList Post)
+}

@@ -94,13 +94,20 @@ runFIO pc x =
     Swap (BindFac (Raw a) b) ->
       runFIO pc (Swap (b a))
     Swap (BindFac (Fac k a b) c) ->
-      runFIO pc (Swap (Fac k (BindFac a c) (BindFac b c)))
+      let fv =
+           if not (pc `consistentWithSubtracting` k) then
+             BindFac a c
+           else if not (pc `consistentWithAdding` k) then
+             BindFac b c
+           else
+             Fac k (BindFac a c) (BindFac b c)             in
+      runFIO pc (Swap fv)
     Swap (BindFac (BindFac a b) c) ->
       runFIO pc (Swap (BindFac a (\d -> BindFac (b d) c)))
     Swap (Fac k a b) -> do  --IO
-      if pc `consistentWithAdding` k then
+      if not (pc `consistentWithSubtracting` k) then
         runFIO pc (Swap a)
-      else if pc `consistentWithSubtracting` k then
+      else if not (pc `consistentWithAdding` k) then
         runFIO pc (Swap b)
       else
         undefined
