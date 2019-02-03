@@ -173,7 +173,7 @@ other_request username database request respond =
                   let action = unpack a
                   let game = game_list d !! index
                   --Write database $ d {game_list = new_game :: delete_at index (game_list d)}
-                  undefined
+                  error "three"
                 _ ->
                   let game = game_list d !! index  in
                   return $ do  --FIO

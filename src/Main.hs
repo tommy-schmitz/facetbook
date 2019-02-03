@@ -53,5 +53,5 @@ main = do  --IO
               sandbox (Singleton (Whitelist [unpack username])) $
                   FacetBook.read_all_posts user
             _ ->
-              sandbox (Singleton Bot) $
+              sandbox AllViews $
                   FacetBook.other_request user

@@ -63,7 +63,7 @@ ffacet pc a b =
   case pc of
     AllViews        -> a
     UpwardClosure k -> Fac k a b
-    Singleton k     -> undefined
+    Singleton k     -> error "one"
 
 consistentWithAdding pc k =
   case pc of
@@ -110,7 +110,7 @@ runFIO pc x =
       else if not (pc `consistentWithAdding` k) then
         runFIO pc (Swap b)
       else
-        undefined
+        error "two"
     IO ia -> do
       a <- ia
       return a
