@@ -12,9 +12,9 @@ import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
 import qualified Network.Wai as WAI
-import Data.List(find)
+import Data.List(foldl', intersect)
 
-import FIO(Lattice(leq, bot), FIORef, FIO, Fac)
+import FIO(Lattice(leq, bot, lub), FIORef, FIO, Fac)
 
 type Post = String
 type User = String
@@ -24,12 +24,15 @@ data Label =
   | Bot
   deriving (Show, Eq)
 instance Lattice Label where
-  leq Bot            _               = True
-  leq _              Bot             = False
-  leq _              (Whitelist [])  = True
-  leq (Whitelist []) _               = False
-  leq (Whitelist us) (Whitelist [u]) = find (u==) us /= Nothing
-  leq k1             k2              = k1==k2
+  leq Bot             _               = True
+  leq _               Bot             = False
+  leq (Whitelist us1) (Whitelist us2) = us2 `subset` us1  where
+    subset xs ys = all (\x -> x `elem` ys) xs
+
+  lub Bot             k               = k
+  lub k               Bot             = k
+  lub (Whitelist us1) (Whitelist us2) = Whitelist (intersect us1 us2)
+
   bot = Bot
 
 type App a = FIORef Label a -> WAI.Request -> (WAI.Response -> FIO Label ()) -> FIO Label ()

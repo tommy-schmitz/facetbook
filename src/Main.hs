@@ -15,43 +15,44 @@ import qualified Network.Wai as WAI
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 
 import Util(check_credentials, Post, Label(Whitelist, Bot), App, FList(Nil), Database(Database, game_list, posts))
-import FIO(Lattice(leq), FIO(IO, New), Fac, FIORef, runFIO, PC(AllViews, Singleton, UpwardClosure))
+import FIO(Lattice(leq), FIO(IO, New), Fac, FIORef, runFIO, PC(Constraints, Singleton))
 import qualified FacetBook as FacetBook(login, authentication_failed, post, post_err_permissions, read_all_posts, other_request)
 
 main = do  --IO
-  database <- runFIO AllViews $ do  --FIO
+  database <- runFIO (Constraints [] []) $ do  --FIO
     New $ Database {game_list = [], posts = return Nil}
   let port = 3000
   Warp.run port $ \request respond -> do  --IO
-    let fio_respond = \x -> IO $ do  --IO
+    let fio_respond k = \x -> IO k $ do  --IO
          respond x
          return ()
-    let sandbox pc app_handler = do  --IO
-         runFIO pc (app_handler database request fio_respond)
+    let sandbox k pc app_handler = do  --IO
+         runFIO pc (app_handler database request (fio_respond k))
          return ResponseReceived
     if WAI.pathInfo request == ["login"] then
-      sandbox AllViews $
+      sandbox Bot (Constraints [] []) $
           FacetBook.login
     else
       case check_credentials request of
         Nothing ->
-          sandbox AllViews $
+          sandbox Bot (Constraints [] []) $
               FacetBook.authentication_failed
         Just username ->
           let user = unpack username  in
+          let sandbox' = sandbox (Whitelist [user])  in
           case WAI.pathInfo request of
             ["post"] ->
               case lookup "permissions" (WAI.queryString request) of
                 Just (Just permissions) ->
                   let users = words (unpack permissions)  in
-                  sandbox (UpwardClosure (Whitelist (user : users))) $
+                  sandbox' (Constraints [Whitelist (user : users)] []) $
                       FacetBook.post user users
                 _ ->
-                  sandbox (Singleton (Whitelist [unpack username])) $
+                  sandbox' (Singleton (Whitelist [user])) $
                       FacetBook.post_err_permissions
             ["read-all-posts"] ->
-              sandbox (Singleton (Whitelist [unpack username])) $
+              sandbox' (Singleton (Whitelist [user])) $
                   FacetBook.read_all_posts user
             _ ->
-              sandbox AllViews $
+              sandbox' (Constraints [] []) $
                   FacetBook.other_request user
