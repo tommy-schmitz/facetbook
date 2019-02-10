@@ -33,7 +33,8 @@ login database request respond =
 
 authentication_failed :: App
 authentication_failed database request respond =
-  respond $ WAI.responseLBS status403 headers "bad credentials"
+  respond $ WAI.responseLBS status200 headers $
+      "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
 
 post :: User -> [User] -> App
 post username users database request respond =
