@@ -35,8 +35,6 @@ instance Lattice Label where
 
   bot = Bot
 
-type App a = FIORef Label a -> WAI.Request -> (WAI.Response -> FIO Label ()) -> FIO Label ()
-
 -- This is the password-checking function.
 -- Currently, it takes the username from the URL parameters.
 -- Currently, it always succeeds without any password.
@@ -57,7 +55,5 @@ data TicTacToe = TicTacToe {
   board :: Int -> Int -> Maybe Bool,
   sequence_number :: Int
 }
-data Database = Database {
-  game_list :: [TicTacToe],
-  posts :: Fac Label (FList Post)
-}
+type Database = (FIORef Label (FList Post), FIORef Label [TicTacToe])
+type App = Database -> WAI.Request -> (WAI.Response -> FIO Label ()) -> FIO Label ()
