@@ -48,12 +48,3 @@ check_credentials request =
 data FList a =
     Nil
   | Cons a (Fac Label (FList a))
-
-data TicTacToe = TicTacToe {
-  players :: [User],
-  player_assignment :: [Maybe Bool],
-  board :: Int -> Int -> Maybe Bool,
-  sequence_number :: Int
-}
-type Database = (FIORef Label (FList Post), FIORef Label [TicTacToe])
-type App = Database -> WAI.Request -> (WAI.Response -> FIO Label ()) -> FIO Label ()

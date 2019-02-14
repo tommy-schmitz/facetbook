@@ -14,7 +14,7 @@ import qualified Network.Wai.Handler.Warp as Warp(run)
 import qualified Network.Wai as WAI
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 
-import Util(check_credentials, Post, Label(Whitelist, Bot), App, FList(Nil))
+import Util(check_credentials, Post, Label(Whitelist, Bot), FList(Nil))
 import FIO(Lattice(leq), FIO(IO, New), Fac, FIORef, runFIO, PC(Constraints, Singleton))
 import qualified FacetBook as FacetBook(login, authentication_failed, post, post_err_permissions, read_all_posts, other_request)
 

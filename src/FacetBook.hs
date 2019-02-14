@@ -15,8 +15,23 @@ import Data.ByteString.Char8(unpack)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(App, Post, User, check_credentials, Label, FList(Nil, Cons), Database, TicTacToe(TicTacToe, players, player_assignment, board, sequence_number))
-import FIO(FIO(Read, Write, Swap), Fac)
+import Util(Post, User, check_credentials, Label, FList(Nil, Cons))
+import FIO(FIO(Read, Write, Swap), Fac, FIORef)
+
+data Action =
+    Iam Bool
+  | Reset
+  | Move Int Int
+  deriving Read
+data TicTacToe = TicTacToe {
+  players :: [User],
+  player_assignment :: [Maybe Bool],  --True means X, False means O
+  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
+  board :: Int -> Int -> Maybe Bool,
+  history :: [String]
+}
+type Database = (FIORef Label (FList Post), FIORef Label [TicTacToe])
+type App = Database -> WAI.Request -> (WAI.Response -> FIO Label ()) -> FIO Label ()
 
 headers = [("Content-Type", "text/html")]
 
@@ -86,9 +101,9 @@ read_all_posts username database request respond = do  --FIO
           "\">Play TicTacToe</a>"
   return ()
 
-get_winner :: TicTacToe -> Either Bool ()
-get_winner game = do  --Either Bool
-  let check (x1, y1) (x2, y2) (x3, y3) = do  --Either Bool
+get_winner :: TicTacToe -> Either (Maybe Bool) ()
+get_winner game = do  --Either (Maybe Bool)
+  let check (x1, y1) (x2, y2) (x3, y3) = do  --Either (Maybe Bool)
        let s1 = board game x1 y1
        let s2 = board game x2 y2
        let s3 = board game x3 y3
@@ -107,18 +122,28 @@ get_winner game = do  --Either Bool
   check (2, 0) (2, 1) (2, 2)  -- Column 2
   check (0, 0) (1, 1) (2, 2)  -- Descending diagonal
   check (2, 0) (1, 1) (0, 2)  -- Ascending diagonal
+  let cats = do  --Maybe
+       sequence $ flip map [0, 1, 2] $ \y ->
+         sequence $ flip map [0, 1, 2] $ \x ->
+           board game x y
+  if cats == Nothing then
+    Right ()
+  else
+    Left Nothing  -- Cats game
 
-render_tictactoe game =
+my_turn game username = (turn game == (player_assignment game !! 0)) == (players game !! 0 == username)
+
+render_tictactoe game username =
   let winner = get_winner game  in
   let sq x y =
        let content =
             case board game x y of
               Just True ->
-                "x"
+                "X"
               Just False ->
-                "o"
+                "O"
               Nothing ->
-                if winner == Right () then
+                if winner == Right () && turn game /= Nothing && my_turn game username then
                   "<a href onclick=\"return false\">#</a>"
                 else
                   ""  in
@@ -129,6 +154,7 @@ render_tictactoe game =
        "px; border: 1px solid black; width: 28px; height: 28px; \">"
        <> content <>
        "</div>"  in
+  "<div style=\"height: 100px; border: 1px solid black;\">" <>
   sq 0 0  <>
   sq 0 1  <>
   sq 0 2  <>
@@ -137,7 +163,9 @@ render_tictactoe game =
   sq 1 2  <>
   sq 2 0  <>
   sq 2 1  <>
-  sq 2 2
+  sq 2 2  <>
+  "</div>" <>
+  fromString (List.intercalate "<br />" (history game))
 
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
@@ -159,19 +187,74 @@ other_request username database request respond =
               let new_game = TicTacToe {
                 players = [username, partner],
                 player_assignment = [Nothing, Nothing],
+                turn = Nothing,
                 board = \_ _ -> Nothing,
-                sequence_number = 0
+                history = []
               }
               return $ do  --FIO
                 Write (snd database) $ return $ new_game : game_list
                 respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game
-            Just index -> do  --Fac
+            Just index ->
+              let game = game_list !! index  in
               case lookup "action" (WAI.queryString request) of
-                Just (Just a) -> do  --Fac
-                  let action = unpack a
-                  let game = game_list !! index
-                  --Write (snd database) $ return $ new_game : delete_at index game_list
-                  error "three"
+                Just (Just a) ->
+                  case readsPrec 0 (unpack a) of
+                    [(action, "")] ->
+                      let new_game = case action of
+                           Iam b ->
+                             if turn game /= Nothing then
+                               game
+                             else
+                               let pa =
+                                    if players game !! 0 == username then
+                                      [Just b, player_assignment game !! 1]
+                                    else
+                                      [player_assignment game !! 0, Just b]          in
+                               let game_can_start =
+                                    case pa of
+                                      [Just True, Just False] -> True
+                                      [Just False, Just True] -> True
+                                      _                       -> False  in
+                               game {
+                                 player_assignment = pa,
+                                 turn = if game_can_start then Just True else Nothing,
+                                 history =
+                                   if game_can_start then
+                                     let p0 = players game !! 0  in
+                                     let p1 = players game !! 1  in
+                                     let pa0 = if (player_assignment game !! 0) == Just True then "X" else "O"  in
+                                     let pa1 = if (player_assignment game !! 1) == Just True then "X" else "O"  in
+                                     let s = "Started game where " ++ p0 ++ " = " ++ pa0 ++ " and " ++ p1 ++ " = " ++ pa1  in
+                                     s : take 4 (history game)
+                                   else
+                                     history game
+                               }
+                           Reset ->
+                             game {
+                               player_assignment = [Nothing, Nothing],
+                               turn = Nothing,
+                               board = \_ _ -> Nothing,
+                               history = (username ++ " reset the game.") : take 4 (history game)
+                             }
+                           Move mx my ->
+                             if turn game /= Nothing && my_turn game username && get_winner game == Right () then
+                               game {
+                                 turn = fmap not (turn game),
+                                 board = \x y ->
+                                   if x == mx && y == my then
+                                     turn game
+                                   else
+                                     board game x y,
+                                 history = (username ++ " put " ++ (if turn game == Just True then "X" else "O") ++ " at " ++ show mx ++ ", " ++ show my) : take 4 (history game)
+                               }
+                             else
+                               game  in
+                      return $ do  --FIO
+                        Write (snd database) $ return $ new_game : delete_at index game_list
+                        respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game
+                    _ ->
+                      return $ do  --FIO
+                        undefined
                 _ ->
                   let game = game_list !! index  in
                   return $ do  --FIO
