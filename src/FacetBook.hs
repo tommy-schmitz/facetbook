@@ -22,7 +22,8 @@ data Action =
     Iam Bool
   | Reset
   | Move Int Int
-  deriving Read
+  | Noop
+  deriving (Read, Show)
 data TicTacToe = TicTacToe {
   players :: [User],
   player_assignment :: [Maybe Bool],  --True means X, False means O
@@ -113,7 +114,7 @@ get_winner game = do  --Either (Maybe Bool)
          Right ()
        else case s1 of
          Nothing -> Right ()
-         Just s -> Left s
+         Just x -> Left (Just x)
   check (0, 0) (1, 0) (2, 0)  -- Row 0
   check (0, 1) (1, 1) (2, 1)  -- Row 1
   check (0, 2) (1, 2) (2, 2)  -- Row 2
@@ -133,7 +134,7 @@ get_winner game = do  --Either (Maybe Bool)
 
 my_turn game username = (turn game == (player_assignment game !! 0)) == (players game !! 0 == username)
 
-render_tictactoe game username =
+render_tictactoe game username partner =
   let winner = get_winner game  in
   let sq x y =
        let content =
@@ -144,17 +145,50 @@ render_tictactoe game username =
                 "O"
               Nothing ->
                 if winner == Right () && turn game /= Nothing && my_turn game username then
-                  "<a href onclick=\"return false\">#</a>"
+                  "<a href onclick=\"return request('" <>
+                  escape (show (Move x y)) <>
+                  "')\">#</a>"
                 else
                   ""  in
        "<div style=\"position: absolute; left: "
        <> escape (show (32 * x)) <>
        "px; top: "
        <> escape (show (32 * y)) <>
-       "px; border: 1px solid black; width: 28px; height: 28px; \">"
+       "px; border: 1px solid black; width: 28px; height: 28px; \">\n"
        <> content <>
-       "</div>"  in
-  "<div style=\"height: 100px; border: 1px solid black;\">" <>
+       "\n</div>\n"  in
+  navbar username <>
+  "<script>\n" <>
+  "  document.body.style.margin = '0';\n" <>
+  "  (function() {\n\n\n" <>
+  "  let preempted = false;\n" <>
+  "  const handle = setInterval(function () {\n" <>
+  "    request('Noop');\n" <>
+  "  }, 3000);\n" <>
+  "  request = function(action, priority) {\n" <>
+  "    const xhr = new XMLHttpRequest();\n" <>
+  "    xhr.addEventListener('load', function() {\n" <>
+  "      clearInterval(handle);\n" <>
+  "      if(!preempted)\n" <>
+  "        document.body.innerHTML = xhr.responseText;\n" <>
+  "      preempted = true;\n" <>
+  "    });\n" <>
+  "    xhr.open('GET',\n" <>
+  "      'tictactoe?username=" <>
+         escape username <>
+         "&partner=" <>
+         escape partner <>
+         "&action='+action" <>
+  "    );\n" <>
+  "    xhr.send();\n" <>
+  "  };\n" <>
+  "  }());\n" <>
+  "</script>\n" <>
+  "<div>" <> escape partner <> ": " <>
+  (case 
+    
+  ) <>
+  "<div style=\"position: relative; height: 100px;\">\n" <>
   sq 0 0  <>
   sq 0 1  <>
   sq 0 2  <>
@@ -164,8 +198,8 @@ render_tictactoe game username =
   sq 2 0  <>
   sq 2 1  <>
   sq 2 2  <>
-  "</div>" <>
-  fromString (List.intercalate "<br />" (history game))
+  "</div>\n" <>
+  fromString (List.intercalate "\n<br />\n" (history game))
 
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
@@ -193,7 +227,7 @@ other_request username database request respond =
               }
               return $ do  --FIO
                 Write (snd database) $ return $ new_game : game_list
-                respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game
+                respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
             Just index ->
               let game = game_list !! index  in
               case lookup "action" (WAI.queryString request) of
@@ -201,6 +235,8 @@ other_request username database request respond =
                   case readsPrec 0 (unpack a) of
                     [(action, "")] ->
                       let new_game = case action of
+                           Noop ->
+                             game
                            Iam b ->
                              if turn game /= Nothing then
                                game
@@ -251,14 +287,14 @@ other_request username database request respond =
                                game  in
                       return $ do  --FIO
                         Write (snd database) $ return $ new_game : delete_at index game_list
-                        respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game
+                        respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
                     _ ->
                       return $ do  --FIO
                         undefined
                 _ ->
                   let game = game_list !! index  in
                   return $ do  --FIO
-                    respond $ WAI.responseLBS status200 headers $ render_tictactoe game
+                    respond $ WAI.responseLBS status200 headers $ render_tictactoe game username partner
         _ ->
           return $ do  --FIO
             respond $ WAI.responseLBS status200 headers $
