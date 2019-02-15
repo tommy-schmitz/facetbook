@@ -145,8 +145,8 @@ render_tictactoe game username partner =
                 "O"
               Nothing ->
                 if winner == Right () && turn game /= Nothing && my_turn game username then
-                  "<a href onclick=\"return request('" <>
-                  escape (show (Move x y)) <>
+                  "<a href onclick=\"return request('Move+" <>
+                  escape (show x) <> "+" <> escape (show y) <>
                   "')\">#</a>"
                 else
                   ""  in
@@ -157,37 +157,60 @@ render_tictactoe game username partner =
        "px; border: 1px solid black; width: 28px; height: 28px; \">\n"
        <> content <>
        "\n</div>\n"  in
+  let roles =
+       let my_role =
+            if turn game == Nothing then
+              escape username <> ": " <>
+              (case player_assignment game username of
+                Just True -> "<span style=\"background-color: #80ff80;\">X</span>"
+                _ -> "<a href onclick=\"return request('Iam+True')\">X</a>"
+              ) <>
+              " " <>
+              (case player_assignment game username of
+                Just False -> "<span style=\"background-color: #80ff80;\">O</span>"
+                _ -> "<a href onclick=\"return request('Iam+False')\">O</a>"
+              )
+            else
+              "<div>" <> escape partner <> ": " <>
+              (case player_assignment game username of
+                Nothing -> "undecided"
+                Just True -> "X"
+                Just False -> "O"
+              ) <>
+              "</div>"  in
+       my_role <>
+       "<div>" <> escape partner <> ": " <>
+       (case player_assignment game partner of
+         Nothing -> "undecided"
+         Just True -> "X"
+         Just False -> "O"
+       ) <>
+       "</div>"  in
   navbar username <>
   "<script>\n" <>
-  "  document.body.style.margin = '0';\n" <>
   "  (function() {\n\n\n" <>
-  "  let preempted = false;\n" <>
-  "  const handle = setInterval(function () {\n" <>
-  "    request('Noop');\n" <>
+  "  document.body.style.margin = '0';\n" <>
+  "  setInterval(function () {\n" <>
+  "    request('Noop', 0);\n" <>
   "  }, 3000);\n" <>
-  "  request = function(action, priority) {\n" <>
+  "  request = function(action) {\n" <>
   "    const xhr = new XMLHttpRequest();\n" <>
   "    xhr.addEventListener('load', function() {\n" <>
-  "      clearInterval(handle);\n" <>
-  "      if(!preempted)\n" <>
-  "        document.body.innerHTML = xhr.responseText;\n" <>
-  "      preempted = true;\n" <>
+  "      document.body.innerHTML = xhr.responseText;\n" <>
   "    });\n" <>
   "    xhr.open('GET',\n" <>
   "      'tictactoe?username=" <>
          escape username <>
          "&partner=" <>
          escape partner <>
-         "&action='+action" <>
+         "&action='+action\n" <>
   "    );\n" <>
   "    xhr.send();\n" <>
+  "    return false;\n" <>
   "  };\n" <>
-  "  }());\n" <>
+  "  \n\n}());\n" <>
   "</script>\n" <>
-  "<div>" <> escape partner <> ": " <>
-  (case 
-    
-  ) <>
+  roles <>
   "<div style=\"position: relative; height: 100px;\">\n" <>
   sq 0 0  <>
   sq 0 1  <>
@@ -199,6 +222,7 @@ render_tictactoe game username partner =
   sq 2 1  <>
   sq 2 2  <>
   "</div>\n" <>
+  "<a href onclick=\"return request('Reset')\">Reset</a><br />" <>
   fromString (List.intercalate "\n<br />\n" (history game))
 
 delete_at index list =
@@ -270,14 +294,22 @@ other_request username database request respond =
                              }
                            Move mx my ->
                              if turn game /= Nothing && my_turn game username && get_winner game == Right () then
-                               game {
+                               let intermediate_game = game {
                                  turn = fmap not (turn game),
                                  board = \x y ->
                                    if x == mx && y == my then
                                      turn game
                                    else
-                                     board game x y,
-                                 history = (username ++ " put " ++ (if turn game == Just True then "X" else "O") ++ " at " ++ show mx ++ ", " ++ show my) : take 4 (history game)
+                                     board game x y
+                               }  in
+                               let victory_info =
+                                    case get_winner intermediate_game of
+                                      Right ()          -> []
+                                      Left (Just True)  -> ["X wins!"]
+                                      Left (Just False) -> ["O wins!"]
+                                      Left Nothing      -> ["Cats game!"]  in
+                               intermediate_game {
+                                 history = victory_info ++ (username ++ " put " ++ (if turn game == Just True then "X" else "O") ++ " at " ++ show mx ++ ", " ++ show my) : take 4 (history game)
                                }
                              else
                                game  in

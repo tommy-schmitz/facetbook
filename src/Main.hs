@@ -25,6 +25,8 @@ main = do  --IO
     return (r1, r2)
   let port = 3000
   Warp.run port $ \request respond -> do  --IO
+    putStrLn (show (WAI.rawPathInfo request))
+    putStrLn (show (WAI.rawQueryString request))
     let fio_respond k = \x -> IO k $ do  --IO
          respond x
          return ()
