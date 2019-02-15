@@ -26,7 +26,7 @@ data Action =
   deriving (Read, Show)
 data TicTacToe = TicTacToe {
   players :: [User],
-  player_assignment :: [Maybe Bool],  --True means X, False means O
+  player_assignment :: User -> Maybe Bool,  --True means X, False means O
   turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
   board :: Int -> Int -> Maybe Bool,
   history :: [String]
@@ -132,7 +132,7 @@ get_winner game = do  --Either (Maybe Bool)
   else
     Left Nothing  -- Cats game
 
-my_turn game username = (turn game == (player_assignment game !! 0)) == (players game !! 0 == username)
+my_turn game username = turn game == player_assignment game username
 
 render_tictactoe game username partner =
   let winner = get_winner game  in
@@ -220,7 +220,7 @@ other_request username database request respond =
             Nothing -> do  --Fac
               let new_game = TicTacToe {
                 players = [username, partner],
-                player_assignment = [Nothing, Nothing],
+                player_assignment = \_ -> Nothing,
                 turn = Nothing,
                 board = \_ _ -> Nothing,
                 history = []
@@ -241,13 +241,9 @@ other_request username database request respond =
                              if turn game /= Nothing then
                                game
                              else
-                               let pa =
-                                    if players game !! 0 == username then
-                                      [Just b, player_assignment game !! 1]
-                                    else
-                                      [player_assignment game !! 0, Just b]          in
+                               let pa = \u -> if u == username then Just b else player_assignment game u  in
                                let game_can_start =
-                                    case pa of
+                                    case map pa (players game) of
                                       [Just True, Just False] -> True
                                       [Just False, Just True] -> True
                                       _                       -> False  in
@@ -258,8 +254,8 @@ other_request username database request respond =
                                    if game_can_start then
                                      let p0 = players game !! 0  in
                                      let p1 = players game !! 1  in
-                                     let pa0 = if (player_assignment game !! 0) == Just True then "X" else "O"  in
-                                     let pa1 = if (player_assignment game !! 1) == Just True then "X" else "O"  in
+                                     let pa0 = if pa p0 == Just True then "X" else "O"  in
+                                     let pa1 = if pa p1 == Just True then "X" else "O"  in
                                      let s = "Started game where " ++ p0 ++ " = " ++ pa0 ++ " and " ++ p1 ++ " = " ++ pa1  in
                                      s : take 4 (history game)
                                    else
@@ -267,7 +263,7 @@ other_request username database request respond =
                                }
                            Reset ->
                              game {
-                               player_assignment = [Nothing, Nothing],
+                               player_assignment = \_ -> Nothing,
                                turn = Nothing,
                                board = \_ _ -> Nothing,
                                history = (username ++ " reset the game.") : take 4 (history game)
