@@ -134,58 +134,60 @@ get_winner game = do  --Either (Maybe Bool)
 
 my_turn game username = turn game == player_assignment game username
 
+render_square game username x y =
+  let content =
+       case board game x y of
+         Just True ->
+           "X"
+         Just False ->
+           "O"
+         Nothing ->
+           if get_winner game == Right () && turn game /= Nothing && my_turn game username then
+             "<a href onclick=\"return request('Move+" <>
+             escape (show x) <> "+" <> escape (show y) <>
+             "')\">#</a>"
+           else
+             ""  in
+  "<div style=\"position: absolute; left: "
+  <> escape (show (32 * x)) <>
+  "px; top: "
+  <> escape (show (32 * y)) <>
+  "px; border: 1px solid black; width: 28px; height: 28px; \">\n"
+  <> content <>
+  "\n</div>\n"
+
+render_roles game username partner =
+  let my_role =
+       if turn game == Nothing then
+         escape username <> ": " <>
+         (case player_assignment game username of
+           Just True -> "<span style=\"background-color: #80ff80;\">X</span>"
+           _ -> "<a href onclick=\"return request('Iam+True')\">X</a>"
+         ) <>
+         " " <>
+         (case player_assignment game username of
+           Just False -> "<span style=\"background-color: #80ff80;\">O</span>"
+           _ -> "<a href onclick=\"return request('Iam+False')\">O</a>"
+         )
+       else
+         "<div>" <> escape partner <> ": " <>
+         (case player_assignment game username of
+           Nothing -> "undecided"
+           Just True -> "X"
+           Just False -> "O"
+         ) <>
+         "</div>"  in
+  my_role <>
+  "<div>" <> escape partner <> ": " <>
+  (case player_assignment game partner of
+    Nothing -> "undecided"
+    Just True -> "X"
+    Just False -> "O"
+  ) <>
+  "</div>"
+
 render_tictactoe game username partner =
-  let winner = get_winner game  in
-  let sq x y =
-       let content =
-            case board game x y of
-              Just True ->
-                "X"
-              Just False ->
-                "O"
-              Nothing ->
-                if winner == Right () && turn game /= Nothing && my_turn game username then
-                  "<a href onclick=\"return request('Move+" <>
-                  escape (show x) <> "+" <> escape (show y) <>
-                  "')\">#</a>"
-                else
-                  ""  in
-       "<div style=\"position: absolute; left: "
-       <> escape (show (32 * x)) <>
-       "px; top: "
-       <> escape (show (32 * y)) <>
-       "px; border: 1px solid black; width: 28px; height: 28px; \">\n"
-       <> content <>
-       "\n</div>\n"  in
-  let roles =
-       let my_role =
-            if turn game == Nothing then
-              escape username <> ": " <>
-              (case player_assignment game username of
-                Just True -> "<span style=\"background-color: #80ff80;\">X</span>"
-                _ -> "<a href onclick=\"return request('Iam+True')\">X</a>"
-              ) <>
-              " " <>
-              (case player_assignment game username of
-                Just False -> "<span style=\"background-color: #80ff80;\">O</span>"
-                _ -> "<a href onclick=\"return request('Iam+False')\">O</a>"
-              )
-            else
-              "<div>" <> escape partner <> ": " <>
-              (case player_assignment game username of
-                Nothing -> "undecided"
-                Just True -> "X"
-                Just False -> "O"
-              ) <>
-              "</div>"  in
-       my_role <>
-       "<div>" <> escape partner <> ": " <>
-       (case player_assignment game partner of
-         Nothing -> "undecided"
-         Just True -> "X"
-         Just False -> "O"
-       ) <>
-       "</div>"  in
+  let sq x y = render_square game username x y  in
   navbar username <>
   "<script>\n" <>
   "  (function() {\n\n\n" <>
@@ -210,7 +212,7 @@ render_tictactoe game username partner =
   "  };\n" <>
   "  \n\n}());\n" <>
   "</script>\n" <>
-  roles <>
+  render_roles game username partner <>
   "<div style=\"position: relative; height: 100px;\">\n" <>
   sq 0 0  <>
   sq 0 1  <>
