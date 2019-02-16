@@ -225,6 +225,64 @@ render_tictactoe game username partner =
   "<a href onclick=\"return request('Reset')\">Reset</a><br />" <>
   fromString (List.intercalate "\n<br />\n" (history game))
 
+update_game :: TicTacToe -> Action -> User -> User -> TicTacToe
+update_game game action username partner =
+  case action of
+    Noop ->
+      game
+    Iam b ->
+      if turn game /= Nothing then
+        game
+      else
+        let pa = \u -> if u == username then Just b else player_assignment game u  in
+        let game_can_start =
+             case map pa (players game) of
+               [Just True, Just False] -> True
+               [Just False, Just True] -> True
+               _                       -> False  in
+        game {
+          player_assignment = pa,
+          turn = if game_can_start then Just True else Nothing,
+          history =
+            if game_can_start then
+              let p0 = players game !! 0  in
+              let p1 = players game !! 1  in
+              let pa0 = if pa p0 == Just True then "X" else "O"  in
+              let pa1 = if pa p1 == Just True then "X" else "O"  in
+              let s = "Started game where " ++ p0 ++ " = " ++ pa0 ++ " and " ++ p1 ++ " = " ++ pa1  in
+              s : take 4 (history game)
+            else
+              history game
+        }
+    Reset ->
+      game {
+        player_assignment = \_ -> Nothing,
+        turn = Nothing,
+        board = \_ _ -> Nothing,
+        history = (username ++ " reset the game.") : take 4 (history game)
+      }
+    Move mx my ->
+      if turn game /= Nothing && my_turn game username && get_winner game == Right () then
+        let intermediate_game = game {
+          turn = fmap not (turn game),
+          board = \x y ->
+            if x == mx && y == my then
+              turn game
+            else
+              board game x y
+        }  in
+        let victory_info =
+             case get_winner intermediate_game of
+               Right ()          -> []
+               Left (Just True)  -> ["X wins!"]
+               Left (Just False) -> ["O wins!"]
+               Left Nothing      -> ["Cats game!"]  in
+        intermediate_game {
+          history = victory_info ++ (username ++ " put " ++ (if turn game == Just True then "X" else "O") ++ " at " ++ show mx ++ ", " ++ show my) : take 4 (history game)
+        }
+      else
+        game
+
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
@@ -254,75 +312,19 @@ other_request username database request respond =
                 respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
             Just index ->
               let game = game_list !! index  in
-              case lookup "action" (WAI.queryString request) of
-                Just (Just a) ->
-                  case readsPrec 0 (unpack a) of
-                    [(action, "")] ->
-                      let new_game = case action of
-                           Noop ->
-                             game
-                           Iam b ->
-                             if turn game /= Nothing then
-                               game
-                             else
-                               let pa = \u -> if u == username then Just b else player_assignment game u  in
-                               let game_can_start =
-                                    case map pa (players game) of
-                                      [Just True, Just False] -> True
-                                      [Just False, Just True] -> True
-                                      _                       -> False  in
-                               game {
-                                 player_assignment = pa,
-                                 turn = if game_can_start then Just True else Nothing,
-                                 history =
-                                   if game_can_start then
-                                     let p0 = players game !! 0  in
-                                     let p1 = players game !! 1  in
-                                     let pa0 = if pa p0 == Just True then "X" else "O"  in
-                                     let pa1 = if pa p1 == Just True then "X" else "O"  in
-                                     let s = "Started game where " ++ p0 ++ " = " ++ pa0 ++ " and " ++ p1 ++ " = " ++ pa1  in
-                                     s : take 4 (history game)
-                                   else
-                                     history game
-                               }
-                           Reset ->
-                             game {
-                               player_assignment = \_ -> Nothing,
-                               turn = Nothing,
-                               board = \_ _ -> Nothing,
-                               history = (username ++ " reset the game.") : take 4 (history game)
-                             }
-                           Move mx my ->
-                             if turn game /= Nothing && my_turn game username && get_winner game == Right () then
-                               let intermediate_game = game {
-                                 turn = fmap not (turn game),
-                                 board = \x y ->
-                                   if x == mx && y == my then
-                                     turn game
-                                   else
-                                     board game x y
-                               }  in
-                               let victory_info =
-                                    case get_winner intermediate_game of
-                                      Right ()          -> []
-                                      Left (Just True)  -> ["X wins!"]
-                                      Left (Just False) -> ["O wins!"]
-                                      Left Nothing      -> ["Cats game!"]  in
-                               intermediate_game {
-                                 history = victory_info ++ (username ++ " put " ++ (if turn game == Just True then "X" else "O") ++ " at " ++ show mx ++ ", " ++ show my) : take 4 (history game)
-                               }
-                             else
-                               game  in
-                      return $ do  --FIO
-                        Write (snd database) $ return $ new_game : delete_at index game_list
-                        respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-                    _ ->
-                      return $ do  --FIO
-                        undefined
-                _ ->
-                  let game = game_list !! index  in
-                  return $ do  --FIO
-                    respond $ WAI.responseLBS status200 headers $ render_tictactoe game username partner
+              let new_game =
+                   case lookup "action" (WAI.queryString request) of
+                     Just (Just a) ->
+                       case readsPrec 0 (unpack a) of
+                         [(action, "")] ->
+                           update_game game action username partner
+                         _ ->
+                           game
+                     _ ->
+                       game  in
+              return $ do  --FIO
+                Write (snd database) $ return $ new_game : delete_at index game_list
+                respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
         _ ->
           return $ do  --FIO
             respond $ WAI.responseLBS status200 headers $
