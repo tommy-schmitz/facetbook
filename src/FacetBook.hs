@@ -12,6 +12,7 @@ import qualified Data.List as List
 import Data.Monoid((<>))
 import Data.String(fromString)
 import Data.ByteString.Char8(unpack)
+import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
@@ -111,7 +112,7 @@ dashboard username database request respond = do  --FIO
           "\">Play TicTacToe</a><br />" <>
           "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
           "Recent posts:<br />" <>
-          escape (List.intercalate "<br />" all_posts)
+          ByteString.intercalate "<br />" (map escape all_posts)
   return ()
 
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
