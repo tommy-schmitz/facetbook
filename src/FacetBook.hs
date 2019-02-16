@@ -170,7 +170,7 @@ render_roles game username partner =
            _ -> "<a href onclick=\"return request('Iam+False')\">O</a>"
          )
        else
-         "<div>" <> escape partner <> ": " <>
+         "<div>" <> escape username <> ": " <>
          (case player_assignment game username of
            Nothing -> "undecided"
            Just True -> "X"
