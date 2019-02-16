@@ -112,7 +112,7 @@ dashboard username database request respond = do  --FIO
           "\">Play TicTacToe</a><br />" <>
           "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
           "Recent posts:<br />" <>
-          ByteString.intercalate "<hr />" (map escape all_posts)
+          ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
   return ()
 
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
