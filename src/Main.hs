@@ -16,7 +16,7 @@ import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 
 import Util(check_credentials, Post, Label(Whitelist, Bot), FList(Nil))
 import FIO(Lattice(leq), FIO(IO, New), Fac, FIORef, runFIO, PC(Constraints, Singleton))
-import qualified FacetBook as FacetBook(login, authentication_failed, post, post_err_permissions, read_all_posts, other_request)
+import qualified FacetBook as FacetBook(login, authentication_failed, do_create_post, create_post, dashboard, other_request)
 
 main = do  --IO
   database <- runFIO (Constraints [] []) $ do  --FIO
@@ -41,8 +41,7 @@ main = do  --IO
         Nothing ->
           sandbox Bot (Constraints [] []) $
               FacetBook.authentication_failed
-        Just username ->
-          let user = unpack username  in
+        Just user ->
           let sandbox' = sandbox (Whitelist [user])  in
           case WAI.pathInfo request of
             ["post"] ->
@@ -50,13 +49,13 @@ main = do  --IO
                 Just (Just permissions) ->
                   let users = words (unpack permissions)  in
                   sandbox' (Constraints [Whitelist (user : users)] []) $
-                      FacetBook.post user users
+                      FacetBook.do_create_post user users
                 _ ->
                   sandbox' (Singleton (Whitelist [user])) $
-                      FacetBook.post_err_permissions
-            ["read-all-posts"] ->
+                      FacetBook.create_post user
+            ["dashboard"] ->
               sandbox' (Singleton (Whitelist [user])) $
-                  FacetBook.read_all_posts user
+                  FacetBook.dashboard user
             _ ->
               sandbox' (Constraints [] []) $
                   FacetBook.other_request user

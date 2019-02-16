@@ -4,13 +4,13 @@ module Util where
 {-
 import Control.Applicative
 import Control.Monad(liftM, ap)
-import Data.ByteString.Char8(unpack)
 import Data.IORef
 import Data.String(fromString)
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
+import Data.ByteString.Char8(unpack)
 import qualified Network.Wai as WAI
 import Data.List(foldl', intersect)
 
@@ -40,8 +40,12 @@ instance Lattice Label where
 -- Currently, it always succeeds without any password.
 check_credentials request =
   case lookup "username" (WAI.queryString request) of
-    Just (Just username) ->
-      Just username
+    Just (Just u) ->
+      let username = unpack u  in
+      if all (\c -> (c>='0' && c<='9') || (c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_') username then
+        Just username
+      else
+        Nothing
     _ ->
       Nothing
 

@@ -43,7 +43,7 @@ login :: App
 login database request respond =
   respond $ WAI.responseLBS status200 headers $
       "Username:\n" <>
-      "<form action=\"read-all-posts\">\n" <>
+      "<form action=\"dashboard\">\n" <>
       "<input name=\"username\"></input>" <>
       "</form>\n"
 
@@ -52,20 +52,30 @@ authentication_failed database request respond =
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
 
-post :: User -> [User] -> App
-post username users database request respond =
+do_create_post :: User -> [User] -> App
+do_create_post username users database request respond =
   case lookup "content" (WAI.queryString request) of
     Just (Just c) -> do  --FIO
       let content = unpack c
       d <- Read (fst database)
-      Write (fst database) $ return $ Cons content d
-      respond $ WAI.responseLBS status200 headers "post successful"
+      Write (fst database) $ return $ Cons (username ++ ": " ++ content) d
+      respond $ WAI.responseLBS status200 headers $
+          "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
     _ ->
-      respond $ WAI.responseLBS status400 headers "bad post (missing content)"
+      create_post username database request respond
 
-post_err_permissions :: App
-post_err_permissions database request respond =
-  respond $ WAI.responseLBS status400 headers "bad post (missing permissions)"
+create_post :: User -> App
+create_post username database request respond =
+  respond $ WAI.responseLBS status200 headers $
+      navbar username <>
+      "<form action=\"post\">\n" <>
+      "<input type=\"hidden\" name=\"username\" value=\"" <>
+      escape username <>
+      "\"></input>" <>
+      "Permissions: <input name=\"permissions\"></input><br />" <>
+      "Content:<br /><textarea name=\"content\"></textarea><br />" <>
+      "<input type=\"submit\"></input>" <>
+      "</form>\n"
 
 flatten :: Fac Label (FList a) -> Fac Label [a]
 flatten ffl = do  --Fac
@@ -83,23 +93,25 @@ escape s = fromString s' where
   f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
   f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
   f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
+  f ('\n':cs) a = f cs (reverse "<br />" ++ a)
   f (c   :cs) a = f cs (c:a)
   f []        a = a
   s' = reverse (f s [])
 
-read_all_posts :: User -> App
-read_all_posts username database request respond = do  --FIO
+dashboard :: User -> App
+dashboard username database request respond = do  --FIO
   d <- Read (fst database)
   Swap $ do  --Fac
     all_posts <- flatten d
     return $ do  --FIO
       respond $ WAI.responseLBS status200 headers $
           navbar username <>
-          "Posts:<br />" <>
-          escape (show all_posts) <>
           "<br /><a href=\"tictactoe?username=" <>
           escape username <>
-          "\">Play TicTacToe</a>"
+          "\">Play TicTacToe</a><br />" <>
+          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
+          "Recent posts:<br />" <>
+          escape (List.intercalate "<br />" all_posts)
   return ()
 
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
