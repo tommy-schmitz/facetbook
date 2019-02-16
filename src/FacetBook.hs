@@ -297,38 +297,36 @@ other_request username database request respond =
     d <- Read (snd database)
     Swap $ do  --Fac
       game_list <- d
-      case lookup "partner" (WAI.queryString request) of
-        Just (Just p) -> do  --Fac
-          let partner = unpack p
-          case List.findIndex (\game -> username `elem` players game && partner `elem` players game) game_list of
-            Nothing -> do  --Fac
-              let new_game = TicTacToe {
-                players = [username, partner],
-                player_assignment = \_ -> Nothing,
-                turn = Nothing,
-                board = \_ _ -> Nothing,
-                history = []
-              }
-              return $ do  --FIO
+      return $ do  --FIO
+        case lookup "partner" (WAI.queryString request) of
+          Just (Just p) ->
+            let partner = unpack p  in
+            case List.findIndex (\game -> username `elem` players game && partner `elem` players game) game_list of
+              Nothing -> do  --FIO
+                let new_game = TicTacToe {
+                  players = [username, partner],
+                  player_assignment = \_ -> Nothing,
+                  turn = Nothing,
+                  board = \_ _ -> Nothing,
+                  history = []
+                }
                 Write (snd database) $ return $ new_game : game_list
                 respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-            Just index ->
-              let game = game_list !! index  in
-              let new_game =
-                   case lookup "action" (WAI.queryString request) of
-                     Just (Just a) ->
-                       case readsPrec 0 (unpack a) of
-                         [(action, "")] ->
-                           update_game game action username partner
-                         _ ->
-                           game
-                     _ ->
-                       game  in
-              return $ do  --FIO
+              Just index -> do  --FIO
+                let game = game_list !! index
+                let new_game =
+                     case lookup "action" (WAI.queryString request) of
+                       Just (Just a) ->
+                         case readsPrec 0 (unpack a) of
+                           [(action, "")] ->
+                             update_game game action username partner
+                           _ ->
+                             game
+                       _ ->
+                         game
                 Write (snd database) $ return $ new_game : delete_at index game_list
                 respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-        _ ->
-          return $ do  --FIO
+          _ -> do  --FIO
             respond $ WAI.responseLBS status200 headers $
                 "<form action=\"tictactoe\">" <>
                 "  Partner:<br />" <>
@@ -338,5 +336,3 @@ other_request username database request respond =
                 "  <input name=\"partner\"></input>" <>
                 "</form>"
     return ()
-
---    case lookup "content" (WAI.queryString request) of
