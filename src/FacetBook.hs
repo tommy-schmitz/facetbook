@@ -4,10 +4,10 @@ module FacetBook where
 {-
 import Control.Applicative
 import Control.Monad(liftM, ap)
-import Data.IORef
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
+import Data.IORef
 import qualified Data.List as List
 import Data.Monoid((<>))
 import Data.String(fromString)
@@ -16,8 +16,8 @@ import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(Post, User, check_credentials, Label, FList(Nil, Cons))
-import FIO(FIO(Read, Write, Swap), Fac, FIORef)
+import Util(Post, User, check_credentials, Label(Whitelist))
+import FIO(leq)
 
 data Action =
     Iam Bool
@@ -32,8 +32,8 @@ data TicTacToe = TicTacToe {
   board :: Int -> Int -> Maybe Bool,
   history :: [String]
 }
-type Database = (FIORef Label (FList Post), FIORef Label [TicTacToe])
-type App = Database -> WAI.Request -> (WAI.Response -> FIO Label ()) -> FIO Label ()
+type Database = (IORef [(Label, Post)], IORef [TicTacToe])
+type App = Database -> WAI.Request -> (WAI.Response -> IO ()) -> IO ()
 
 headers = [("Content-Type", "text/html")]
 
@@ -56,10 +56,11 @@ authentication_failed database request respond =
 do_create_post :: User -> [User] -> App
 do_create_post username users database request respond =
   case lookup "content" (WAI.queryString request) of
-    Just (Just c) -> do  --FIO
+    Just (Just c) -> do  --IO
       let content = unpack c
-      d <- Read (fst database)
-      Write (fst database) $ return $ Cons (username ++ ": " ++ content) d
+      d <- readIORef (fst database)
+      -------- Below line is impacted by security policy --------
+      writeIORef (fst database) $ (Whitelist (username : users), username ++ ": " ++ content) : d
       respond $ WAI.responseLBS status200 headers $
           "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
     _ ->
@@ -78,15 +79,10 @@ create_post username database request respond =
       "<input type=\"submit\"></input>" <>
       "</form>\n"
 
-flatten :: Fac Label (FList a) -> Fac Label [a]
-flatten ffl = do  --Fac
-  fl <- ffl
-  case fl of
-    Nil ->
-      return []
-    Cons x ffl -> do  --Fac
-      xs <- flatten ffl
-      return (x:xs)
+-------- Below function argument is impacted by security policy --------
+flatten :: Label -> [(Label, a)] -> [a]
+flatten k d =
+  map snd $ filter (\(k', p) -> leq k' k) $ d
 
 escape s = fromString s' where
   f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
@@ -100,11 +96,10 @@ escape s = fromString s' where
   s' = reverse (f s [])
 
 dashboard :: User -> App
-dashboard username database request respond = do  --FIO
-  d <- Read (fst database)
-  Swap $ do  --Fac
-    all_posts <- flatten d
-    return $ do  --FIO
+dashboard username database request respond = do  --IO
+      d <- readIORef (fst database)
+      -------- Below line is affected by security policy --------
+      let all_posts = flatten (Whitelist [username]) d
       respond $ WAI.responseLBS status200 headers $
           navbar username <>
           "<br /><a href=\"tictactoe?username=" <>
@@ -113,7 +108,6 @@ dashboard username database request respond = do  --FIO
           "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
           "Recent posts:<br />" <>
           ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
-  return ()
 
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
 get_winner game = do  --Either (Maybe Bool)
@@ -305,12 +299,9 @@ delete_at index list =
 other_request :: User -> App
 other_request username database request respond =
   if WAI.pathInfo request /= ["tictactoe"] then
-    respond $ WAI.responseLBS status404 headers "bad request"
-  else do  --FIO
-    d <- Read (snd database)
-    Swap $ do  --Fac
-      game_list <- d
-      return $ do  --FIO
+        respond $ WAI.responseLBS status404 headers "bad request"
+  else do  --IO
+        game_list <- readIORef (snd database)
         case lookup "partner" (WAI.queryString request) of
           Just (Just p) ->
             let partner = unpack p  in
@@ -319,7 +310,7 @@ other_request username database request respond =
                   "Sorry, but playing a game with yourself is not supported."
             else
               case List.findIndex (\game -> username `elem` players game && partner `elem` players game) game_list of
-                Nothing -> do  --FIO
+                Nothing -> do  --IO
                   let new_game = TicTacToe {
                     players = [username, partner],
                     player_assignment = \_ -> Nothing,
@@ -327,9 +318,9 @@ other_request username database request respond =
                     board = \_ _ -> Nothing,
                     history = []
                   }
-                  Write (snd database) $ return $ new_game : game_list
+                  writeIORef (snd database) $ new_game : game_list
                   respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-                Just index -> do  --FIO
+                Just index -> do  --IO
                   let game = game_list !! index
                   let new_game =
                        case lookup "action" (WAI.queryString request) of
@@ -341,9 +332,9 @@ other_request username database request respond =
                                game
                          _ ->
                            game
-                  Write (snd database) $ return $ new_game : delete_at index game_list
+                  writeIORef (snd database) $ new_game : delete_at index game_list
                   respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-          _ -> do  --FIO
+          _ -> do  --IO
             respond $ WAI.responseLBS status200 headers $
                 "<form action=\"tictactoe\">" <>
                 "  Partner:<br />" <>
@@ -352,4 +343,3 @@ other_request username database request respond =
                 "\"></input>" <>
                 "  <input name=\"partner\"></input>" <>
                 "</form>"
-    return ()
