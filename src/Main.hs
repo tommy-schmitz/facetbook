@@ -19,10 +19,10 @@ import Util(check_credentials, Post)
 import qualified FacetBook as FacetBook(login, authentication_failed, do_create_post, create_post, dashboard, other_request)
 
 main = do  --IO
-  database <- do  --IO
-    r1 <- newIORef []
-    r2 <- newIORef []
-    return (r1, r2)
+  r1 <- newIORef []
+  r2 <- newIORef []
+  let posts_database = (r1, undefined)
+  let tictactoe_database = (undefined, r2)
   let port = 3000
   Warp.run port $ \request respond -> do  --IO
     putStrLn (show (WAI.rawPathInfo request))
@@ -30,16 +30,16 @@ main = do  --IO
     let io_respond = \x -> do  --IO
          respond x
          return ()
-    let delegate app_handler = do  --IO
+    let delegate database app_handler = do  --IO
          app_handler database request io_respond
          return ResponseReceived
     if WAI.pathInfo request == ["login"] then
-      delegate $
+      delegate undefined $
           FacetBook.login
     else
       case check_credentials request of
         Nothing ->
-          delegate $
+          delegate undefined $
               FacetBook.authentication_failed
         Just user ->
           case WAI.pathInfo request of
@@ -47,14 +47,14 @@ main = do  --IO
               case lookup "permissions" (WAI.queryString request) of
                 Just (Just permissions) ->
                   let users = words (unpack permissions)  in
-                  delegate $
+                  delegate posts_database $
                       FacetBook.do_create_post user users
                 _ ->
-                  delegate $
+                  delegate undefined $
                       FacetBook.create_post user
             ["dashboard"] ->
-              delegate $
+              delegate posts_database $
                   FacetBook.dashboard user
             _ ->
-              delegate $
+              delegate tictactoe_database $
                   FacetBook.other_request user
