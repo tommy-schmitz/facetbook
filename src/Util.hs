@@ -4,12 +4,13 @@ module Util where
 {-
 import Control.Applicative
 import Control.Monad(liftM, ap)
-import Data.IORef
-import Data.String(fromString)
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
+import Data.String(fromString)
+import Network.HTTP.Types.Header(ResponseHeaders)
+import Data.IORef
 import Data.ByteString.Char8(unpack)
 import qualified Network.Wai as WAI
 import Data.List(foldl', intersect)
@@ -52,3 +53,30 @@ check_credentials request =
 data FList a =
     Nil
   | Cons a (Fac Label (FList a))
+
+data TicTacToe = TicTacToe {
+  players :: [User],
+  player_assignment :: User -> Maybe Bool,  --True means X, False means O
+  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
+  board :: Int -> Int -> Maybe Bool,
+  history :: [String]
+}
+type Database = (IORef [(Label, Post)], IORef [TicTacToe])
+type App = Database -> WAI.Request -> (WAI.Response -> IO ()) -> IO ()
+
+headers :: ResponseHeaders
+headers = [("Content-Type", "text/html")]
+
+escape s = fromString s' where
+  f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
+  f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
+  f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
+  f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
+  f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
+  f ('\n':cs) a = f cs (reverse "<br />" ++ a)
+  f (c   :cs) a = f cs (c:a)
+  f []        a = a
+  s' = reverse (f s [])
+
+navbar username =
+  "<div><a href=\"login\">Logout</a></div>"

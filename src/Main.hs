@@ -7,16 +7,48 @@ import Control.Monad(liftM, ap)
 import Data.String(fromString)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 -}
+import Data.Monoid((<>))
+import Network.HTTP.Types.Status(status200)
 import Data.IORef
 import Data.ByteString.Char8(unpack)
 import Data.List(find)
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import qualified Network.Wai as WAI
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
+import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 
-import Util(check_credentials, Post)
---import FIO(Lattice(leq), FIO(IO, New), Fac, FIORef, runFIO, PC(Constraints, Singleton))
-import qualified FacetBook as FacetBook(login, authentication_failed, do_create_post, create_post, dashboard, other_request)
+import Util(check_credentials, Post, User, App, Label(Whitelist), headers, escape, navbar)
+import FIO(Lattice(leq))
+import qualified FacetBook as FacetBook(login, authentication_failed, create_post, other_request)
+
+do_create_post :: User -> [User] -> App
+do_create_post username users database request respond =
+  case lookup "content" (WAI.queryString request) of
+    Just (Just c) -> do  --IO
+      let content = unpack c
+      d <- readIORef (fst database)
+      writeIORef (fst database) $ (Whitelist (username : users), username ++ ": " ++ content) : d
+      respond $ WAI.responseLBS status200 headers $
+          "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
+    _ ->
+      FacetBook.create_post username database request respond
+
+filter_posts :: Label -> [(Label, a)] -> [a]
+filter_posts k d =
+  map snd $ filter (\(k', p) -> leq k' k) $ d
+
+dashboard :: User -> App
+dashboard username database request respond = do  --IO
+      d <- readIORef (fst database)
+      let all_posts = filter_posts (Whitelist [username]) d
+      respond $ WAI.responseLBS status200 headers $
+          navbar username <>
+          "<br /><a href=\"tictactoe?username=" <>
+          escape username <>
+          "\">Play TicTacToe</a><br />" <>
+          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
+          "Recent posts:<br />" <>
+          ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
 
 main = do  --IO
   r1 <- newIORef []
@@ -48,13 +80,13 @@ main = do  --IO
                 Just (Just permissions) ->
                   let users = words (unpack permissions)  in
                   delegate posts_database $
-                      FacetBook.do_create_post user users
+                      do_create_post user users
                 _ ->
                   delegate undefined $
                       FacetBook.create_post user
             ["dashboard"] ->
               delegate posts_database $
-                  FacetBook.dashboard user
+                  dashboard user
             _ ->
               delegate tictactoe_database $
                   FacetBook.other_request user

@@ -12,11 +12,10 @@ import qualified Data.List as List
 import Data.Monoid((<>))
 import Data.String(fromString)
 import Data.ByteString.Char8(unpack)
-import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(Post, User, check_credentials, Label(Whitelist))
+import Util(Post, User, check_credentials, Label(Whitelist), TicTacToe(TicTacToe, board, history, players, player_assignment, turn), Database, App, headers, escape, navbar)
 import FIO(leq)
 
 data Action =
@@ -25,20 +24,6 @@ data Action =
   | Move Int Int
   | Noop
   deriving (Read, Show)
-data TicTacToe = TicTacToe {
-  players :: [User],
-  player_assignment :: User -> Maybe Bool,  --True means X, False means O
-  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
-  board :: Int -> Int -> Maybe Bool,
-  history :: [String]
-}
-type Database = (IORef [(Label, Post)], IORef [TicTacToe])
-type App = Database -> WAI.Request -> (WAI.Response -> IO ()) -> IO ()
-
-headers = [("Content-Type", "text/html")]
-
-navbar username =
-  "<div><a href=\"login\">Logout</a></div>"
 
 login :: App
 login database request respond =
@@ -53,19 +38,6 @@ authentication_failed database request respond =
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
 
-do_create_post :: User -> [User] -> App
-do_create_post username users database request respond =
-  case lookup "content" (WAI.queryString request) of
-    Just (Just c) -> do  --IO
-      let content = unpack c
-      d <- readIORef (fst database)
-      -------- Below line is impacted by security policy --------
-      writeIORef (fst database) $ (Whitelist (username : users), username ++ ": " ++ content) : d
-      respond $ WAI.responseLBS status200 headers $
-          "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
-    _ ->
-      create_post username database request respond
-
 create_post :: User -> App
 create_post username database request respond =
   respond $ WAI.responseLBS status200 headers $
@@ -78,36 +50,6 @@ create_post username database request respond =
       "Content:<br /><textarea name=\"content\"></textarea><br />" <>
       "<input type=\"submit\"></input>" <>
       "</form>\n"
-
--------- Below function argument is impacted by security policy --------
-filter_posts :: Label -> [(Label, a)] -> [a]
-filter_posts k d =
-  map snd $ filter (\(k', p) -> leq k' k) $ d
-
-escape s = fromString s' where
-  f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
-  f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
-  f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
-  f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
-  f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
-  f ('\n':cs) a = f cs (reverse "<br />" ++ a)
-  f (c   :cs) a = f cs (c:a)
-  f []        a = a
-  s' = reverse (f s [])
-
-dashboard :: User -> App
-dashboard username database request respond = do  --IO
-      d <- readIORef (fst database)
-      -------- Below line is affected by security policy --------
-      let all_posts = filter_posts (Whitelist [username]) d
-      respond $ WAI.responseLBS status200 headers $
-          navbar username <>
-          "<br /><a href=\"tictactoe?username=" <>
-          escape username <>
-          "\">Play TicTacToe</a><br />" <>
-          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
-          "Recent posts:<br />" <>
-          ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
 
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
 get_winner game = do  --Either (Maybe Bool)
