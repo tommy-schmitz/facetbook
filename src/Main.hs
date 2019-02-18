@@ -17,9 +17,10 @@ import qualified Network.Wai as WAI
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 
-import Util(check_credentials, Post, User, App, Label(Whitelist), headers, escape, navbar)
+import Util(check_credentials, Post, User, Label(Whitelist), headers, escape, navbar)
 import FIO(Lattice(leq))
 import qualified FacetBook as FacetBook(login, authentication_failed, create_post, other_request)
+import FacetBook(App)
 
 do_create_post :: User -> [User] -> App
 do_create_post username users database request respond =

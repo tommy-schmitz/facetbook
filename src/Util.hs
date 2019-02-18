@@ -54,16 +54,6 @@ data FList a =
     Nil
   | Cons a (Fac Label (FList a))
 
-data TicTacToe = TicTacToe {
-  players :: [User],
-  player_assignment :: User -> Maybe Bool,  --True means X, False means O
-  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
-  board :: Int -> Int -> Maybe Bool,
-  history :: [String]
-}
-type Database = (IORef [(Label, Post)], IORef [TicTacToe])
-type App = Database -> WAI.Request -> (WAI.Response -> IO ()) -> IO ()
-
 headers :: ResponseHeaders
 headers = [("Content-Type", "text/html")]
 
