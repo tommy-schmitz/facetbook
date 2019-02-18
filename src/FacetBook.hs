@@ -80,8 +80,8 @@ create_post username database request respond =
       "</form>\n"
 
 -------- Below function argument is impacted by security policy --------
-flatten :: Label -> [(Label, a)] -> [a]
-flatten k d =
+filter_posts :: Label -> [(Label, a)] -> [a]
+filter_posts k d =
   map snd $ filter (\(k', p) -> leq k' k) $ d
 
 escape s = fromString s' where
@@ -99,7 +99,7 @@ dashboard :: User -> App
 dashboard username database request respond = do  --IO
       d <- readIORef (fst database)
       -------- Below line is affected by security policy --------
-      let all_posts = flatten (Whitelist [username]) d
+      let all_posts = filter_posts (Whitelist [username]) d
       respond $ WAI.responseLBS status200 headers $
           navbar username <>
           "<br /><a href=\"tictactoe?username=" <>
