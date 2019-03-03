@@ -4,15 +4,15 @@ module Main where
 {-
 import Control.Applicative
 import Control.Monad(liftM, ap)
-import Data.String(fromString)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 -}
+import Data.String(fromString)
 import Data.Monoid((<>))
 import Network.HTTP.Types.Status(status200)
 import Data.IORef
 import Data.ByteString.Char8(unpack)
 import Data.List(find)
-import qualified Network.Wai.Handler.Warp as Warp(run)
+import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai as WAI
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
@@ -57,7 +57,13 @@ main = do  --IO
   let posts_database = (r1, undefined)
   let tictactoe_database = (undefined, r2)
   let port = 3000
-  Warp.run port $ \request respond -> do  --IO
+  let settings =
+       Warp.setPort 3000 $
+       Warp.setOnExceptionResponse (\exn ->
+         WAI.responseLBS status200 [] (fromString (show exn))
+       ) $
+       Warp.defaultSettings
+  Warp.runSettings settings $ \request respond -> do  --IO
     putStrLn (show (WAI.rawPathInfo request))
     putStrLn (show (WAI.rawQueryString request))
     let io_respond = \x -> do  --IO
