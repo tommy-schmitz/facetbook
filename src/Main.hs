@@ -54,8 +54,8 @@ dashboard username database request respond = do  --IO
 main = do  --IO
   r1 <- newIORef []
   r2 <- newIORef []
-  let posts_database = (r1, undefined)
-  let tictactoe_database = (undefined, r2)
+  let database = (r1, r2)
+  let censored_database = (undefined, r2)
   let port = 3000
   Warp.run port $ \request respond -> do  --IO
     putStrLn (show (WAI.rawPathInfo request))
@@ -80,14 +80,14 @@ main = do  --IO
               case lookup "permissions" (WAI.queryString request) of
                 Just (Just permissions) ->
                   let users = words (unpack permissions)  in
-                  delegate posts_database $
+                  delegate database $
                       do_create_post user users
                 _ ->
-                  delegate undefined $
+                  delegate censored_database $
                       FacetBook.create_post user
             ["dashboard"] ->
-              delegate posts_database $
+              delegate database $
                   dashboard user
             _ ->
-              delegate tictactoe_database $
+              delegate censored_database $
                   FacetBook.other_request user
