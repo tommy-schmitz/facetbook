@@ -15,7 +15,7 @@ import Data.ByteString.Char8(unpack)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(Post, User, check_credentials, Label(Whitelist), headers, escape, navbar)
+import Util(Post, User, check_credentials, Label(Whitelist), headers, escape, navbar, TicTacToe(turn, board, player_assignment, history, players))
 import FIO(leq)
 
 data Action =
@@ -24,13 +24,6 @@ data Action =
   | Move Int Int
   | Noop
   deriving (Read, Show)
-data TicTacToe = TicTacToe {
-  players :: [User],
-  player_assignment :: User -> Maybe Bool,  --True means X, False means O
-  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
-  board :: Int -> Int -> Maybe Bool,
-  history :: [String]
-}
 type Database = (IORef [(Label, Post)], IORef [TicTacToe])
 type App = Database -> WAI.Request -> (WAI.Response -> IO ()) -> IO ()
 
@@ -246,51 +239,3 @@ update_game game action username partner =
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
-
-other_request :: User -> App
-other_request username database request respond =
-  if WAI.pathInfo request /= ["tictactoe"] then
-        respond $ WAI.responseLBS status404 headers "bad request"
-  else do  --IO
-        game_list <- readIORef (snd database)
-        case lookup "partner" (WAI.queryString request) of
-          Just (Just p) ->
-            let partner = unpack p  in
-            if partner == username then
-              respond $ WAI.responseLBS status200 headers $
-                  "Sorry, but playing a game with yourself is not supported."
-            else
-              case List.findIndex (\game -> username `elem` players game && partner `elem` players game) game_list of
-                Nothing -> do  --IO
-                  let new_game = TicTacToe {
-                    players = [username, partner],
-                    player_assignment = \_ -> Nothing,
-                    turn = Nothing,
-                    board = \_ _ -> Nothing,
-                    history = []
-                  }
-                  writeIORef (snd database) $ new_game : game_list
-                  respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-                Just index -> do  --IO
-                  let game = game_list !! index
-                  let new_game =
-                       case lookup "action" (WAI.queryString request) of
-                         Just (Just a) ->
-                           case readsPrec 0 (unpack a) of
-                             [(action, "")] ->
-                               update_game game action username partner
-                             _ ->
-                               game
-                         _ ->
-                           game
-                  writeIORef (snd database) $ new_game : delete_at index game_list
-                  respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-          _ -> do  --IO
-            respond $ WAI.responseLBS status200 headers $
-                "<form action=\"tictactoe\">" <>
-                "  Partner:<br />" <>
-                "  <input type=\"hidden\" name=\"username\" value=\""<>
-                escape username <>
-                "\"></input>" <>
-                "  <input name=\"partner\"></input>" <>
-                "</form>"

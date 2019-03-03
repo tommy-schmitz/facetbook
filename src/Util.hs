@@ -70,3 +70,11 @@ escape s = fromString s' where
 
 navbar username =
   "<div><a href=\"login\">Logout</a></div>"
+
+data TicTacToe = TicTacToe {
+  players :: [User],
+  player_assignment :: User -> Maybe Bool,  --True means X, False means O
+  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
+  board :: Int -> Int -> Maybe Bool,
+  history :: [String]
+}
