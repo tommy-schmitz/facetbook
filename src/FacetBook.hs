@@ -342,7 +342,15 @@ other_request username database request respond =
                          _ ->
                            game
                   Write (snd database) $ return $ new_game : delete_at index game_list
-                  respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+                  d <- Read (fst database)
+                  Swap $ do  --Fac
+                    all_posts <- flatten d
+                    return $ do  --FIO
+                      respond $ WAI.responseLBS status200 headers $
+                        render_tictactoe new_game username partner <>
+                        "<br /><br />Recent posts:<br />" <>
+                        ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
+                  return ()
           _ -> do  --FIO
             respond $ WAI.responseLBS status200 headers $
                 "<form action=\"tictactoe\">" <>
