@@ -15,7 +15,7 @@ import Data.ByteString.Char8(unpack)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(Post, User, check_credentials, Label(Whitelist), headers, escape, navbar, TicTacToe(turn, board, player_assignment, history, players))
+import Util(Post, User, check_credentials, Label(Whitelist), headers, escape, navbar, TicTacToe(TicTacToe, turn, board, player_assignment, history, players))
 import FIO(leq)
 
 data Action =
@@ -239,3 +239,46 @@ update_game game action username partner =
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
+
+do_tictactoe username database request = do  --IO
+        game_list <- readIORef (snd database)
+        case lookup "partner" (WAI.queryString request) of
+          Just (Just p) ->
+            let partner = unpack p  in
+            if partner == username then
+              return "Sorry, but playing a game with yourself is not supported."
+            else
+              case List.findIndex (\game -> username `elem` players game && partner `elem` players game) game_list of
+                Nothing -> do  --IO
+                  let new_game = TicTacToe {
+                    players = [username, partner],
+                    player_assignment = \_ -> Nothing,
+                    turn = Nothing,
+                    board = \_ _ -> Nothing,
+                    history = []
+                  }
+                  writeIORef (snd database) $ new_game : game_list
+                  return (FacetBook.render_tictactoe new_game username partner)
+                Just index -> do  --IO
+                  let game = game_list !! index
+                  let new_game =
+                       case lookup "action" (WAI.queryString request) of
+                         Just (Just a) ->
+                           case readsPrec 0 (unpack a) of
+                             [(action, "")] ->
+                               FacetBook.update_game game action username partner
+                             _ ->
+                               game
+                         _ ->
+                           game
+                  writeIORef (snd database) $ new_game : FacetBook.delete_at index game_list
+                  return (FacetBook.render_tictactoe new_game username partner)
+          _ -> do  --IO
+            return $
+                "<form action=\"tictactoe\">" <>
+                "  Partner:<br />" <>
+                "  <input type=\"hidden\" name=\"username\" value=\""<>
+                escape username <>
+                "\"></input>" <>
+                "  <input name=\"partner\"></input>" <>
+                "</form>"

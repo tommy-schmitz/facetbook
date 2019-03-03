@@ -19,7 +19,7 @@ import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 
 import Util(check_credentials, Post, User, Label(Whitelist), headers, escape, navbar, TicTacToe(TicTacToe, players, player_assignment, board, turn, history))
 import FIO(Lattice(leq))
-import qualified FacetBook as FacetBook(login, authentication_failed, create_post, render_tictactoe, delete_at, update_game)
+import qualified FacetBook as FacetBook(login, authentication_failed, create_post, do_tictactoe, delete_at, update_game)
 import FacetBook(App)
 
 do_create_post :: User -> [User] -> App
@@ -54,55 +54,16 @@ dashboard username database request respond = do  --IO
 other_request :: User -> App
 other_request username database request respond =
   if WAI.pathInfo request /= ["tictactoe"] then
-        respond $ WAI.responseLBS status404 headers "bad request"
+    respond $ WAI.responseLBS status404 headers "bad request"
   else do  --IO
-        game_list <- readIORef (snd database)
-        case lookup "partner" (WAI.queryString request) of
-          Just (Just p) ->
-            let partner = unpack p  in
-            if partner == username then
-              respond $ WAI.responseLBS status200 headers $
-                  "Sorry, but playing a game with yourself is not supported."
-            else
-              case List.findIndex (\game -> username `elem` players game && partner `elem` players game) game_list of
-                Nothing -> do  --IO
-                  let new_game = TicTacToe {
-                    players = [username, partner],
-                    player_assignment = \_ -> Nothing,
-                    turn = Nothing,
-                    board = \_ _ -> Nothing,
-                    history = []
-                  }
-                  writeIORef (snd database) $ new_game : game_list
-                  respond $ WAI.responseLBS status200 headers $ FacetBook.render_tictactoe new_game username partner
-                Just index -> do  --IO
-                  let game = game_list !! index
-                  let new_game =
-                       case lookup "action" (WAI.queryString request) of
-                         Just (Just a) ->
-                           case readsPrec 0 (unpack a) of
-                             [(action, "")] ->
-                               FacetBook.update_game game action username partner
-                             _ ->
-                               game
-                         _ ->
-                           game
-                  writeIORef (snd database) $ new_game : FacetBook.delete_at index game_list
-                  d <- readIORef (fst database)
-                  let all_posts = filter_posts (Whitelist [username]) d
-                  respond $ WAI.responseLBS status200 headers $
-                    FacetBook.render_tictactoe new_game username partner <>
-                    "<br /><br />Recent posts:<br />" <>
-                    ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
-          _ -> do  --IO
-            respond $ WAI.responseLBS status200 headers $
-                "<form action=\"tictactoe\">" <>
-                "  Partner:<br />" <>
-                "  <input type=\"hidden\" name=\"username\" value=\""<>
-                escape username <>
-                "\"></input>" <>
-                "  <input name=\"partner\"></input>" <>
-                "</form>"
+    let censored_database = (undefined, snd database)
+    s <- FacetBook.do_tictactoe username censored_database request
+    d <- readIORef (fst database)
+    let all_posts = filter_posts (Whitelist [username]) d
+    respond $ WAI.responseLBS status200 headers $
+      s <>
+      "<br /><br />Recent posts:<br />" <>
+      ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
 
 main = do  --IO
   r1 <- newIORef []
