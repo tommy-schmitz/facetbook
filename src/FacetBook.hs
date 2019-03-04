@@ -258,7 +258,7 @@ do_tictactoe username database request = do  --IO
                     history = []
                   }
                   writeIORef (snd database) $ new_game : game_list
-                  return (FacetBook.render_tictactoe new_game username partner)
+                  return (render_tictactoe new_game username partner)
                 Just index -> do  --IO
                   let game = game_list !! index
                   let new_game =
@@ -266,13 +266,13 @@ do_tictactoe username database request = do  --IO
                          Just (Just a) ->
                            case readsPrec 0 (unpack a) of
                              [(action, "")] ->
-                               FacetBook.update_game game action username partner
+                               update_game game action username partner
                              _ ->
                                game
                          _ ->
                            game
-                  writeIORef (snd database) $ new_game : FacetBook.delete_at index game_list
-                  return (FacetBook.render_tictactoe new_game username partner)
+                  writeIORef (snd database) $ new_game : delete_at index game_list
+                  return (render_tictactoe new_game username partner)
           _ -> do  --IO
             return $
                 "<form action=\"tictactoe\">" <>
