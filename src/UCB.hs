@@ -46,6 +46,7 @@ navbar username =
 login :: Handler
 login database respond =
   respond $ WAI.responseLBS status200 headers $
+      "<h2>Login</h2>" <>
       "Username:\n" <>
       "<form action=\"dashboard\">\n" <>
       "<input name=\"username\"></input>" <>
@@ -67,6 +68,7 @@ compose_post :: User -> Handler
 compose_post username database respond =
   respond $ WAI.responseLBS status200 headers $
       navbar username <>
+      "<h2>Create Post</h2>" <>
       "<form action=\"post\">\n" <>
       "<input type=\"hidden\" name=\"username\" value=\"" <>
       escape username <>
@@ -84,11 +86,12 @@ dashboard username database respond = do  --FIO
     return $ do  --FIO
       respond $ WAI.responseLBS status200 headers $
           navbar username <>
+          "<h2>Dashboard</h2>" <>
+          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
           "<br /><a href=\"tictactoe?username=" <>
           escape username <>
           "\">Play TicTacToe</a><br />" <>
-          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
-          "Recent posts:<br />" <>
+          "Recent posts:<hr />" <>
           ByteString.intercalate "<hr />" (map escape (take 20 posts))
   return ()
 
@@ -204,6 +207,7 @@ render_roles game username partner =
 render_tictactoe game username partner =
   let sq x y = render_square game username x y  in
   navbar username <>
+  "<h2>Play TicTacToe</h2>" <>
   "<script>\n" <>
   "  (function() {\n\n\n" <>
   "  document.body.style.margin = '0';\n" <>
@@ -346,6 +350,7 @@ tictactoe_play username partner action database respond =
 
 tictactoe_select_partner username database respond =
   respond $ WAI.responseLBS status200 headers $
+      "<h2>Play TicTacToe</h2>" <>
       "<form action=\"tictactoe\">" <>
       "  Partner:<br />" <>
       "  <input type=\"hidden\" name=\"username\" value=\""<>
