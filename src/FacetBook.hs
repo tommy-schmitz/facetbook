@@ -333,7 +333,12 @@ other_request username database request respond =
                          _ ->
                            game
                   writeIORef (snd database) $ new_game : delete_at index game_list
-                  respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+                  d <- readIORef (fst database)
+                  let all_posts = flatten (Whitelist [username]) d
+                  respond $ WAI.responseLBS status200 headers $
+                      render_tictactoe new_game username partner <>
+                      "<br /><br />Recent posts:<br />" <>
+                      ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
           _ -> do  --IO
             respond $ WAI.responseLBS status200 headers $
                 "<form action=\"tictactoe\">" <>
