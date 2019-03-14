@@ -34,14 +34,18 @@ do_create_post username users database request respond =
     _ ->
       FacetBook.create_post username database request respond
 
-filter_posts :: Label -> [(Label, a)] -> [a]
+flatten :: [(Label, a)] -> [a]
+flatten d =
+  map snd d
+
+filter_posts :: Label -> [(Label, a)] -> [(Label, a)]
 filter_posts k d =
-  map snd $ filter (\(k', p) -> leq k' k) $ d
+  filter (\(k', p) -> leq k' k) d
 
 dashboard :: User -> App
 dashboard username database request respond = do  --IO
       d <- readIORef (fst database)
-      let all_posts = filter_posts (Whitelist [username]) d
+      let all_posts = flatten d
       respond $ WAI.responseLBS status200 headers $
           navbar username <>
           "<br /><a href=\"tictactoe?username=" <>
@@ -59,7 +63,7 @@ other_request username database request respond =
     let censored_database = (undefined, snd database)
     s <- FacetBook.do_tictactoe username censored_database request
     d <- readIORef (fst database)
-    let all_posts = filter_posts (Whitelist [username]) d
+    let all_posts = flatten d
     respond $ WAI.responseLBS status200 headers $
       s <>
       "<br /><br />Recent posts:<br />" <>
@@ -69,7 +73,6 @@ main = do  --IO
   r1 <- newIORef []
   r2 <- newIORef []
   let database = (r1, r2)
-  let censored_database = (undefined, r2)
   let port = 3000
   Warp.run port $ \request respond -> do  --IO
     putStrLn (show (WAI.rawPathInfo request))
@@ -88,7 +91,10 @@ main = do  --IO
         Nothing ->
           delegate undefined $
               FacetBook.authentication_failed
-        Just user ->
+        Just user -> do  --IO
+          d <- readIORef r1
+          r3 <- newIORef (filter_posts (Whitelist [user]) d)
+          let censored_database = (r3, r2)
           case WAI.pathInfo request of
             ["post"] ->
               case lookup "permissions" (WAI.queryString request) of
@@ -100,8 +106,9 @@ main = do  --IO
                   delegate censored_database $
                       FacetBook.create_post user
             ["dashboard"] ->
-              delegate database $
+              delegate censored_database $
                   dashboard user
             _ ->
-              delegate database $
-                  other_request user
+              delegate censored_database $
+                  other_request user (censor database user) request respond
+                  other_request user (censor database "Bottom") request undefined
