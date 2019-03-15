@@ -81,7 +81,7 @@ dashboard :: User -> Handler
 dashboard username database respond = do  --FIO
   d <- Read (fst database)
   Swap $ do  --Fac
-    all_posts <- flatten d
+    posts <- flatten d
     return $ do  --FIO
       respond $ WAI.responseLBS status200 headers $
           navbar username <>
@@ -90,7 +90,7 @@ dashboard username database respond = do  --FIO
           "\">Play TicTacToe</a><br />" <>
           "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
           "Recent posts:<br />" <>
-          ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
+          ByteString.intercalate "<hr />" (map escape (take 20 posts))
   return ()
 
 not_found :: Handler
