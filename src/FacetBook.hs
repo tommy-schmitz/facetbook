@@ -16,8 +16,12 @@ import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(Post, User, check_credentials, Label, FList(Nil, Cons))
+import Util(Post, User, check_credentials, Label, FList(Nil, Cons), get_parameter, valid_username)
 import FIO(FIO(Read, Write, Swap), Fac, FIORef)
+
+type Ref = FIORef Label
+type PostList = FList Post
+type XIO = FIO Label
 
 data Action =
     Iam Bool
@@ -27,46 +31,41 @@ data Action =
   deriving (Read, Show)
 data TicTacToe = TicTacToe {
   players :: [User],
-  player_assignment :: User -> Maybe Bool,  --True means X, False means O
+  player_assignment :: User -> Maybe Bool,  -- 'True' means X, 'False' means O
   turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
   board :: Int -> Int -> Maybe Bool,
   history :: [String]
 }
-type Database = (FIORef Label (FList Post), FIORef Label [TicTacToe])
-type App = Database -> WAI.Request -> (WAI.Response -> FIO Label ()) -> FIO Label ()
+type Database = (Ref PostList, Ref [TicTacToe])
+type Handler = Database -> (WAI.Response -> XIO ()) -> XIO ()
 
 headers = [("Content-Type", "text/html")]
 
 navbar username =
   "<div><a href=\"login\">Logout</a></div>"
 
-login :: App
-login database request respond =
+login :: Handler
+login database respond =
   respond $ WAI.responseLBS status200 headers $
       "Username:\n" <>
       "<form action=\"dashboard\">\n" <>
       "<input name=\"username\"></input>" <>
       "</form>\n"
 
-authentication_failed :: App
-authentication_failed database request respond =
+authentication_failed :: Handler
+authentication_failed database respond =
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
 
-do_create_post :: User -> [User] -> App
-do_create_post username users database request respond =
-  case lookup "content" (WAI.queryString request) of
-    Just (Just c) -> do  --FIO
-      let content = unpack c
-      d <- Read (fst database)
-      Write (fst database) $ return $ Cons (username ++ ": " ++ content) d
-      respond $ WAI.responseLBS status200 headers $
-          "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
-    _ ->
-      create_post username database request respond
+do_create_post :: User -> Post -> [User] -> Handler
+do_create_post username content users database respond = do  --FIO
+  d <- Read (fst database)
+  Write (fst database) $ return $ Cons (username ++ ": " ++ content) d
+  respond $ WAI.responseLBS status200 headers $
+      "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
 
-create_post :: User -> App
-create_post username database request respond =
+compose_post :: User -> Handler
+compose_post username database respond =
   respond $ WAI.responseLBS status200 headers $
       navbar username <>
       "<form action=\"post\">\n" <>
@@ -77,6 +76,26 @@ create_post username database request respond =
       "Content:<br /><textarea name=\"content\"></textarea><br />" <>
       "<input type=\"submit\"></input>" <>
       "</form>\n"
+
+dashboard :: User -> Handler
+dashboard username database respond = do  --FIO
+  d <- Read (fst database)
+  Swap $ do  --Fac
+    all_posts <- flatten d
+    return $ do  --FIO
+      respond $ WAI.responseLBS status200 headers $
+          navbar username <>
+          "<br /><a href=\"tictactoe?username=" <>
+          escape username <>
+          "\">Play TicTacToe</a><br />" <>
+          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
+          "Recent posts:<br />" <>
+          ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
+  return ()
+
+not_found :: Handler
+not_found _ respond = do  --FIO
+  respond $ WAI.responseLBS status404 [] "404 bad request"
 
 flatten :: Fac Label (FList a) -> Fac Label [a]
 flatten ffl = do  --Fac
@@ -98,22 +117,6 @@ escape s = fromString s' where
   f (c   :cs) a = f cs (c:a)
   f []        a = a
   s' = reverse (f s [])
-
-dashboard :: User -> App
-dashboard username database request respond = do  --FIO
-  d <- Read (fst database)
-  Swap $ do  --Fac
-    all_posts <- flatten d
-    return $ do  --FIO
-      respond $ WAI.responseLBS status200 headers $
-          navbar username <>
-          "<br /><a href=\"tictactoe?username=" <>
-          escape username <>
-          "\">Play TicTacToe</a><br />" <>
-          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
-          "Recent posts:<br />" <>
-          ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
-  return ()
 
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
 get_winner game = do  --Either (Maybe Bool)
@@ -302,54 +305,88 @@ delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
 
-other_request :: User -> App
-other_request username database request respond =
-  if WAI.pathInfo request /= ["tictactoe"] then
-    respond $ WAI.responseLBS status404 headers "bad request"
-  else do  --FIO
-    d <- Read (snd database)
-    Swap $ do  --Fac
-      game_list <- d
-      return $ do  --FIO
-        case lookup "partner" (WAI.queryString request) of
-          Just (Just p) ->
-            let partner = unpack p  in
-            if partner == username then
-              respond $ WAI.responseLBS status200 headers $
-                  "Sorry, but playing a game with yourself is not supported."
-            else
-              case List.findIndex (\game -> username `elem` players game && partner `elem` players game) game_list of
-                Nothing -> do  --FIO
-                  let new_game = TicTacToe {
-                    players = [username, partner],
-                    player_assignment = \_ -> Nothing,
-                    turn = Nothing,
-                    board = \_ _ -> Nothing,
-                    history = []
-                  }
-                  Write (snd database) $ return $ new_game : game_list
-                  respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-                Just index -> do  --FIO
-                  let game = game_list !! index
-                  let new_game =
-                       case lookup "action" (WAI.queryString request) of
-                         Just (Just a) ->
-                           case readsPrec 0 (unpack a) of
-                             [(action, "")] ->
-                               update_game game action username partner
-                             _ ->
-                               game
-                         _ ->
-                           game
-                  Write (snd database) $ return $ new_game : delete_at index game_list
-                  respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-          _ -> do  --FIO
-            respond $ WAI.responseLBS status200 headers $
-                "<form action=\"tictactoe\">" <>
-                "  Partner:<br />" <>
-                "  <input type=\"hidden\" name=\"username\" value=\""<>
-                escape username <>
-                "\"></input>" <>
-                "  <input name=\"partner\"></input>" <>
-                "</form>"
-    return ()
+read_ref :: Ref a -> (a -> XIO ()) -> XIO ()
+read_ref r g = do
+  fx <- Read r
+  Swap $ do  --Fac
+    x <- fx
+    return (g x)
+  return ()
+
+tictactoe_play username partner action database respond =
+  if partner == username then
+    respond $ WAI.responseLBS status200 headers $
+        "Sorry, but playing a game with yourself is not supported."
+  else
+    read_ref (snd database) $ \game_list ->
+      let maybe_game = List.findIndex (\game ->
+             username `elem` players game  &&
+             partner  `elem` players game
+           ) game_list  in
+      case maybe_game of
+        Nothing -> do  --FIO
+          let new_game = TicTacToe {
+            players = [username, partner],
+            player_assignment = \_ -> Nothing,
+            turn = Nothing,
+            board = \_ _ -> Nothing,
+            history = []
+          }
+          Write (snd database) $ return $ new_game : game_list
+          respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+        Just index -> do  --FIO
+          let game = game_list !! index
+          let new_game =
+               case readsPrec 0 action of
+                 [(parsed_action, "")] ->
+                   update_game game parsed_action username partner
+                 _ ->
+                   game
+          Write (snd database) $ return $ new_game : delete_at index game_list
+          respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+
+tictactoe_select_partner username database respond =
+  respond $ WAI.responseLBS status200 headers $
+      "<form action=\"tictactoe\">" <>
+      "  Partner:<br />" <>
+      "  <input type=\"hidden\" name=\"username\" value=\""<>
+      escape username <>
+      "\"></input>" <>
+      "  <input name=\"partner\"></input>" <>
+      "</form>"
+
+parse_request :: WAI.Request -> Handler
+parse_request request =
+  if WAI.pathInfo request == ["login"] then
+    login
+  else case check_credentials request of
+    Nothing ->
+      authentication_failed
+    Just username -> case WAI.pathInfo request of
+      ["post"] ->
+        let content = get_parameter request "content"  in
+        let permissions = get_parameter request "permissions"  in
+        let users = words permissions  in
+        if content /= "" && all valid_username users then
+          do_create_post username content users
+        else
+          compose_post username
+      ["dashboard"] ->
+        dashboard username
+      ["tictactoe"] ->
+        let partner = get_parameter request "partner"  in
+        if valid_username partner then
+          let action = get_parameter request "action"  in
+          tictactoe_play username partner action
+        else
+          tictactoe_select_partner username
+      _ ->
+        not_found
+
+handle_request database faceted_request respond = do  --FIO
+  Swap $ do  --Fac
+    request <- faceted_request
+    return $ do  --FIO
+      let handler = parse_request request
+      handler database respond
+  return ()

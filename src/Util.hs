@@ -5,11 +5,11 @@ module Util where
 import Control.Applicative
 import Control.Monad(liftM, ap)
 import Data.IORef
-import Data.String(fromString)
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
+import Data.String(fromString)
 import Data.ByteString.Char8(unpack)
 import qualified Network.Wai as WAI
 import Data.List(foldl', intersect)
@@ -35,6 +35,13 @@ instance Lattice Label where
 
   bot = Bot
 
+valid_username :: String -> Bool
+valid_username s =
+  length s > 0  &&
+  all (\c -> (c>='0' && c<='9') ||
+             (c>='a' && c<='z') ||
+             (c>='A' && c<='Z') ||
+             c=='_'                ) s
 -- This is the password-checking function.
 -- Currently, it takes the username from the URL parameters.
 -- Currently, it always succeeds without any password.
@@ -52,3 +59,11 @@ check_credentials request =
 data FList a =
     Nil
   | Cons a (Fac Label (FList a))
+
+get_parameter :: WAI.Request -> String -> String
+get_parameter request key =
+  case lookup (fromString key) (WAI.queryString request) of
+    Just (Just value) ->
+      unpack value
+    _ ->
+      ""
