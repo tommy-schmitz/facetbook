@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, GADTs #-}
-module Util where
+module Shared where
 
 {-
 import Control.Applicative

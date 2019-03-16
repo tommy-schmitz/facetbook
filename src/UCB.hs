@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, GADTs #-}
-module FacetBook where
+module UCB where
 
 {-
 import Control.Applicative
@@ -16,7 +16,7 @@ import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import qualified Network.Wai as WAI
 
-import Util(Post, User, check_credentials, Label, FList(Nil, Cons), get_parameter, valid_username)
+import Shared(Post, User, check_credentials, Label, FList(Nil, Cons), get_parameter, valid_username)
 import FIO(FIO(Read, Write, Swap), Fac, FIORef)
 
 type Ref = FIORef Label
