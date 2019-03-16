@@ -42,6 +42,7 @@ valid_username s =
              (c>='a' && c<='z') ||
              (c>='A' && c<='Z') ||
              c=='_'                ) s
+
 -- This is the password-checking function.
 -- Currently, it takes the username from the URL parameters.
 -- Currently, it always succeeds without any password.

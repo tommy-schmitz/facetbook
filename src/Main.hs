@@ -27,7 +27,6 @@ policy request =
       (Bot, Bot)
     Just username -> case WAI.pathInfo request of
       ["post"] ->
-        let content = get_parameter request "content"  in
         let permissions = get_parameter request "permissions"  in
         let users = words permissions  in
         if all valid_username users then
@@ -37,6 +36,7 @@ policy request =
       _ ->
         (Bot, Whitelist [username])
 
+main :: IO ()
 main = do  --IO
   database <- runFIO (Constraints [] []) $ do  --FIO
     r1 <- New Nil
@@ -50,5 +50,5 @@ main = do  --IO
          return ()
     let faceted_request = Fac k1 (Raw request) Undefined
     runFIO (Constraints [] []) $
-        FacetBook.handle_request database faceted_request fio_respond
+        UCB.handle_request database faceted_request fio_respond
     return ResponseReceived
