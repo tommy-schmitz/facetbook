@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Shared where
 
 {-
@@ -11,8 +11,8 @@ import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
 import Data.String(fromString)
 import Data.ByteString.Char8(unpack)
-import qualified Network.Wai as WAI
-import Data.List(foldl', intersect)
+import qualified Network.Wai as WAI(Request, queryString)
+import qualified Data.List as List(intersect)
 
 import FIO(Lattice(leq, bot, lub), FIORef, FIO, Fac)
 
@@ -31,7 +31,7 @@ instance Lattice Label where
 
   lub Bot             k               = k
   lub k               Bot             = k
-  lub (Whitelist us1) (Whitelist us2) = Whitelist (intersect us1 us2)
+  lub (Whitelist us1) (Whitelist us2) = Whitelist (List.intersect us1 us2)
 
   bot = Bot
 

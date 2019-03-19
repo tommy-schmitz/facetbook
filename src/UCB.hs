@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 module UCB where
 
 {-
@@ -8,16 +8,15 @@ import Data.IORef
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
-import qualified Data.List as List
+import qualified Data.List as List(intercalate, splitAt, drop, findIndex)
 import Data.Monoid((<>))
 import Data.String(fromString)
-import Data.ByteString.Char8(unpack)
 import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
-import Network.HTTP.Types.Status(status200, status400, status403, status404)
-import qualified Network.Wai as WAI
+import Network.HTTP.Types.Status(status200, status404)
+import qualified Network.Wai as WAI(Request, pathInfo, Response, responseLBS)
 
 import Shared(Post, User, check_credentials, Label, FList(Nil, Cons), get_parameter, valid_username)
-import FIO(FIO(Read, Write, Swap), Fac, FIORef)
+import FIO(FIO(Read, Write, Swap), Fac(), FIORef)
 
 type Ref = FIORef Label
 type PostList = FList Post

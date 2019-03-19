@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 module TCB where
 
 {-
@@ -7,11 +7,11 @@ import Control.Monad(liftM, ap)
 import Data.IORef
 import Data.String(fromString)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
--}
 import Data.ByteString.Char8(unpack)
 import Data.List(find)
+-}
 import qualified Network.Wai.Handler.Warp as Warp(run)
-import qualified Network.Wai as WAI
+import qualified Network.Wai as WAI(Request, pathInfo)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 
 import Shared(check_credentials, Post, Label(Whitelist, Bot), FList(Nil), get_parameter, valid_username)
