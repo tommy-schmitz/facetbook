@@ -382,7 +382,8 @@ parse_request request =
       _ ->
         not_found
 
-handle_request database faceted_request respond = do  --FIO
+handle_request :: Fac Label WAI.Request -> Handler
+handle_request faceted_request database respond = do  --FIO
   Swap $ do  --Fac
     request <- faceted_request
     return $ do  --FIO

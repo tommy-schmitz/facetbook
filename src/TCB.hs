@@ -50,5 +50,5 @@ main = do  --IO
          return ()
     let faceted_request = Fac k1 (Raw request) Undefined
     runFIO (Constraints [] []) $
-        UCB.handle_request database faceted_request fio_respond
+        UCB.handle_request faceted_request database fio_respond
     return ResponseReceived
