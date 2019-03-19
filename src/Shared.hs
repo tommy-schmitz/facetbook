@@ -47,15 +47,11 @@ valid_username s =
 -- Currently, it takes the username from the URL parameters.
 -- Currently, it always succeeds without any password.
 check_credentials request =
-  case lookup "username" (WAI.queryString request) of
-    Just (Just u) ->
-      let username = unpack u  in
-      if all (\c -> (c>='0' && c<='9') || (c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_') username then
-        Just username
-      else
-        Nothing
-    _ ->
-      Nothing
+  let username = get_parameter request "username"  in
+  if valid_username username then
+    Just username
+  else
+    Nothing
 
 data FList a =
     Nil
