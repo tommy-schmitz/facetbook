@@ -37,7 +37,7 @@ instance Lattice Label where
 
 valid_username :: String -> Bool
 valid_username s =
-  length s > 0  &&
+  s /= ""  &&
   all (\c -> (c>='0' && c<='9') ||
              (c>='a' && c<='z') ||
              (c>='A' && c<='Z') ||
