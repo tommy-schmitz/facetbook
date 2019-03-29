@@ -308,45 +308,42 @@ delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
 
-read_ref :: Ref a -> (a -> XIO ()) -> XIO ()
-read_ref r g = do
-  fx <- Read r
-  Swap $ do  --Fac
-    x <- fx
-    return (g x)
-  return ()
-
 tictactoe_play username partner action database respond =
   if partner == username then
     respond $ WAI.responseLBS status200 headers $
         "Sorry, but playing a game with yourself is not supported."
-  else
-    read_ref (snd database) $ \game_list ->
-      let maybe_game = List.findIndex (\game ->
-             username `elem` players game  &&
-             partner  `elem` players game
-           ) game_list  in
-      case maybe_game of
-        Nothing -> do  --FIO
-          let new_game = TicTacToe {
-            players = [username, partner],
-            player_assignment = \_ -> Nothing,
-            turn = Nothing,
-            board = \_ _ -> Nothing,
-            history = []
-          }
-          Write (snd database) $ return $ new_game : game_list
-          respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-        Just index -> do  --FIO
-          let game = game_list !! index
-          let new_game =
-               case readsPrec 0 action of
-                 [(parsed_action, "")] ->
-                   update_game game parsed_action username partner
-                 _ ->
-                   game
-          Write (snd database) $ return $ new_game : delete_at index game_list
-          respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+  else do  --FIO
+    fac_gamelist <- Read (snd database)
+    Swap $ do  --Fac
+      game_list <- fac_gamelist
+      return $ do  --FIO
+        let maybe_game_index = List.findIndex (\game ->
+               username `elem` players game  &&
+               partner  `elem` players game
+             ) game_list
+        new_game <- case maybe_game_index of
+          Nothing -> do  --FIO
+            let new_game = TicTacToe {
+              players = [username, partner],
+              player_assignment = \_ -> Nothing,
+              turn = Nothing,
+              board = \_ _ -> Nothing,
+              history = []
+            }
+            Write (snd database) $ return $ new_game : game_list
+            return new_game
+          Just index -> do  --FIO
+            let game = game_list !! index
+            let new_game =
+                 case readsPrec 0 action of
+                   [(parsed_action, "")] ->
+                     update_game game parsed_action username partner
+                   _ ->
+                     game
+            Write (snd database) $ return $ new_game : delete_at index game_list
+            return new_game
+        respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+    return ()
 
 tictactoe_select_partner username database respond =
   respond $ WAI.responseLBS status200 headers $
