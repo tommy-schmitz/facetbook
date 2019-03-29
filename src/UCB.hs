@@ -1,29 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 module UCB where
-
-{-
-import Control.Applicative
-import Control.Monad(liftM, ap)
-import qualified Network.Wai.Handler.Warp as Warp(run)
-import Network.Wai.Internal(ResponseReceived(ResponseReceived))
--}
 import Data.IORef
 import qualified Data.List as List(intercalate, splitAt, drop, findIndex)
 import Data.Monoid((<>))
 import Data.String(fromString)
 import Network.HTTP.Types.Status(status200, status404)
 import qualified Network.Wai as WAI(Request, pathInfo, Response, responseLBS)
-
 import Shared
 import FIO(leq)
-
 data Action =
     Iam Bool
   | Reset
   | Move Int Int
   | Noop
   deriving (Read, Show)
-
 login :: Handler
 login database respond =
   respond $ WAI.responseLBS status200 headers $
@@ -32,12 +22,10 @@ login database respond =
       "<form action=\"dashboard\">\n" <>
       "<input name=\"username\"></input>" <>
       "</form>\n"
-
 authentication_failed :: Handler
 authentication_failed database respond =
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
-
 compose_post :: User -> Handler
 compose_post username database respond =
   respond $ WAI.responseLBS status200 headers $
@@ -51,11 +39,9 @@ compose_post username database respond =
       "Content:<br /><textarea name=\"content\"></textarea><br />" <>
       "<input type=\"submit\"></input>" <>
       "</form>\n"
-
 not_found :: Handler
 not_found _ respond = do  --IO
   respond $ WAI.responseLBS status404 [] "404 bad request"
-
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
 get_winner game = do  --Either (Maybe Bool)
   let check (x1, y1) (x2, y2) (x3, y3) = do  --Either (Maybe Bool)
@@ -85,9 +71,7 @@ get_winner game = do  --Either (Maybe Bool)
     Right ()
   else
     Left Nothing  -- Cats game
-
 my_turn game username = turn game == player_assignment game username
-
 render_square game username x y =
   let content =
        case board game x y of
@@ -109,7 +93,6 @@ render_square game username x y =
   "px; border: 1px solid black; width: 28px; height: 28px; \">\n"
   <> content <>
   "\n</div>\n"
-
 render_roles game username partner =
   let my_role =
        if turn game == Nothing then
@@ -139,7 +122,6 @@ render_roles game username partner =
     Just False -> "O"
   ) <>
   "</div>"
-
 render_tictactoe game username partner =
   let sq x y = render_square game username x y  in
   navbar username <>
@@ -181,7 +163,6 @@ render_tictactoe game username partner =
   "</div>\n" <>
   "<a href onclick=\"return request('Reset')\">Reset</a><br />" <>
   fromString (List.intercalate "\n<br />\n" (history game))
-
 update_game :: TicTacToe -> Action -> User -> User -> TicTacToe
 update_game game action username partner =
   case action of
@@ -239,11 +220,9 @@ update_game game action username partner =
         }
       else
         game
-
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
-
 tictactoe_play username partner action database respond =
   if partner == username then
     respond $ WAI.responseLBS status200 headers $
@@ -276,7 +255,6 @@ tictactoe_play username partner action database respond =
             writeIORef (snd database) $ new_game : delete_at index game_list
             return new_game
         respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
-
 tictactoe_select_partner username database respond =
   respond $ WAI.responseLBS status200 headers $
       "<h2>Play TicTacToe</h2>" <>

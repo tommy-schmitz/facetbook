@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TCB where
-
-{-
-import Control.Applicative
-import Control.Monad(liftM, ap)
-import Data.String(fromString)
-import Network.HTTP.Types.Status(status200, status400, status403, status404)
-import Data.ByteString.Char8(unpack)
-import Data.List(find)
--}
 import Data.IORef
 import Data.Monoid((<>))
 import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
@@ -16,11 +7,9 @@ import qualified Network.Wai.Handler.Warp as Warp(run)
 import qualified Network.Wai as WAI(Request, pathInfo, responseLBS)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 import Network.HTTP.Types.Status(status200)
-
 import FIO
 import Shared
 import qualified UCB
-
 do_create_post :: User -> Post -> [User] -> Handler
 do_create_post username content users database respond = do  --IO
   d <- readIORef (fst database)
@@ -28,13 +17,10 @@ do_create_post username content users database respond = do  --IO
   writeIORef (fst database) (labeled_data : d)
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
-
 flatten :: [(Label, Post)] -> [Post]
 flatten = map snd
-
 filter_posts :: Label -> PostList -> PostList
 filter_posts k = filter (\(k',p) -> leq k' k)
-
 dashboard :: User -> Handler
 dashboard username database respond = do  --IO
   labeled_posts <- readIORef (fst database)
@@ -49,7 +35,6 @@ dashboard username database respond = do  --IO
           "\">Play TicTacToe</a><br />" <>
           "Recent posts:<hr />" <>
           ByteString.intercalate "<hr />" (map escape (take 20 posts))
-
 handle_request :: WAI.Request -> Handler
 handle_request request =
   let sandbox h = \database respond ->
@@ -80,7 +65,6 @@ handle_request request =
           sandbox $ UCB.tictactoe_select_partner username
       _ ->
         sandbox $ UCB.not_found
-
 main :: IO ()
 main = do  --IO
   r1 <- newIORef []
