@@ -4,14 +4,15 @@ module Shared where
 {-
 import Control.Applicative
 import Control.Monad(liftM, ap)
-import Data.IORef
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import Network.HTTP.Types.Status(status200, status400, status403, status404)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 -}
+import Data.IORef
 import Data.String(fromString)
 import Data.ByteString.Char8(unpack)
-import qualified Network.Wai as WAI(Request, queryString)
+import Network.HTTP.Types.Header(ResponseHeaders)
+import qualified Network.Wai as WAI(Request, Response, queryString)
 import qualified Data.List as List(intersect)
 
 import FIO(Lattice(leq, bot, lub), FIORef, FIO, Fac)
@@ -64,3 +65,34 @@ get_parameter request key =
       unpack value
     _ ->
       ""
+
+type Ref = IORef
+type PostList = [(Label, Post)]
+type XIO = IO
+
+data TicTacToe = TicTacToe {
+  players :: [User],
+  player_assignment :: User -> Maybe Bool,  -- 'True' means X, 'False' means O
+  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
+  board :: Int -> Int -> Maybe Bool,
+  history :: [String]
+}
+type Database = (Ref PostList, Ref [TicTacToe])
+type Handler = Database -> (WAI.Response -> XIO ()) -> XIO ()
+
+headers :: ResponseHeaders
+headers = [("Content-Type", "text/html")]
+
+navbar username =
+  "<div><a href=\"login\">Logout</a></div>"
+
+escape s = fromString s' where
+  f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
+  f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
+  f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
+  f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
+  f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
+  f ('\n':cs) a = f cs (reverse "<br />" ++ a)
+  f (c   :cs) a = f cs (c:a)
+  f []        a = a
+  s' = reverse (f s [])

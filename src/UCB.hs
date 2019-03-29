@@ -11,16 +11,11 @@ import Data.IORef
 import qualified Data.List as List(intercalate, splitAt, drop, findIndex)
 import Data.Monoid((<>))
 import Data.String(fromString)
-import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status404)
 import qualified Network.Wai as WAI(Request, pathInfo, Response, responseLBS)
 
-import Shared(Post, User, check_credentials, Label(Whitelist), FList(Nil, Cons), get_parameter, valid_username)
+import Shared
 import FIO(leq)
-
-type Ref = IORef
-type PostList = [(Label, Post)]
-type XIO = IO
 
 data Action =
     Iam Bool
@@ -28,20 +23,6 @@ data Action =
   | Move Int Int
   | Noop
   deriving (Read, Show)
-data TicTacToe = TicTacToe {
-  players :: [User],
-  player_assignment :: User -> Maybe Bool,  -- 'True' means X, 'False' means O
-  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
-  board :: Int -> Int -> Maybe Bool,
-  history :: [String]
-}
-type Database = (Ref PostList, Ref [TicTacToe])
-type Handler = Database -> (WAI.Response -> XIO ()) -> XIO ()
-
-headers = [("Content-Type", "text/html")]
-
-navbar username =
-  "<div><a href=\"login\">Logout</a></div>"
 
 login :: Handler
 login database respond =
@@ -57,14 +38,6 @@ authentication_failed database respond =
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
 
-do_create_post :: User -> Post -> [User] -> Handler
-do_create_post username content users database respond = do  --IO
-  d <- readIORef (fst database)
-  let labeled_data = (Whitelist (username : users), username ++ ": " ++ content)
-  writeIORef (fst database) (labeled_data : d)
-  respond $ WAI.responseLBS status200 headers $
-      "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
-
 compose_post :: User -> Handler
 compose_post username database respond =
   respond $ WAI.responseLBS status200 headers $
@@ -79,41 +52,9 @@ compose_post username database respond =
       "<input type=\"submit\"></input>" <>
       "</form>\n"
 
-dashboard :: User -> Handler
-dashboard username database respond = do  --IO
-  labeled_posts <- readIORef (fst database)
-  let d = filter_posts (Whitelist [username]) labeled_posts
-  let posts = flatten d
-  respond $ WAI.responseLBS status200 headers $
-          navbar username <>
-          "<h2>Dashboard</h2>" <>
-          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
-          "<br /><a href=\"tictactoe?username=" <>
-          escape username <>
-          "\">Play TicTacToe</a><br />" <>
-          "Recent posts:<hr />" <>
-          ByteString.intercalate "<hr />" (map escape (take 20 posts))
-
 not_found :: Handler
 not_found _ respond = do  --IO
   respond $ WAI.responseLBS status404 [] "404 bad request"
-
-flatten :: [(Label, Post)] -> [Post]
-flatten = map snd
-
-filter_posts :: Label -> PostList -> PostList
-filter_posts k = filter (\(k',p) -> leq k' k)
-
-escape s = fromString s' where
-  f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
-  f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
-  f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
-  f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
-  f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
-  f ('\n':cs) a = f cs (reverse "<br />" ++ a)
-  f (c   :cs) a = f cs (c:a)
-  f []        a = a
-  s' = reverse (f s [])
 
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
 get_winner game = do  --Either (Maybe Bool)
@@ -346,36 +287,3 @@ tictactoe_select_partner username database respond =
       "\"></input>" <>
       "  <input name=\"partner\"></input>" <>
       "</form>"
-
-parse_request :: WAI.Request -> Handler
-parse_request request =
-  if WAI.pathInfo request == ["login"] then
-    login
-  else case check_credentials request of
-    Nothing ->
-      authentication_failed
-    Just username -> case WAI.pathInfo request of
-      ["post"] ->
-        let content = get_parameter request "content"  in
-        let permissions = get_parameter request "permissions"  in
-        let users = words permissions  in
-        if content /= "" && all valid_username users then
-          do_create_post username content users
-        else
-          compose_post username
-      ["dashboard"] ->
-        dashboard username
-      ["tictactoe"] ->
-        let partner = get_parameter request "partner"  in
-        if valid_username partner then
-          let action = get_parameter request "action"  in
-          tictactoe_play username partner action
-        else
-          tictactoe_select_partner username
-      _ ->
-        not_found
-
-handle_request :: WAI.Request -> Handler
-handle_request request database respond = do  --IO
-      let handler = parse_request request
-      handler database respond
