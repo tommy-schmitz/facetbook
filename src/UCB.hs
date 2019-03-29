@@ -313,7 +313,15 @@ tictactoe_play username partner action database respond =
                      game
             Write (snd database) $ return $ new_game : delete_at index game_list
             return new_game
-        respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+        d <- Read (fst database)
+        Swap $ do  --Fac
+          all_posts <- flatten d
+          return $ do  --FIO
+            respond $ WAI.responseLBS status200 headers $
+              render_tictactoe new_game username partner <>
+              "<br /><br />Recent posts:<hr />" <>
+              ByteString.intercalate "<hr />" (map escape (take 20 all_posts))
+        return ()
     return ()
 tictactoe_select_partner username database respond =
   respond $ WAI.responseLBS status200 headers $
