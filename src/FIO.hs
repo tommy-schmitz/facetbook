@@ -1,25 +1,13 @@
 {-# LANGUAGE GADTs #-}
 module FIO where
-
-{-
-import Control.Applicative
-import Data.ByteString.Char8(unpack)
-import Data.String(fromString)
-import qualified Network.Wai.Handler.Warp as Warp(run)
-import Network.HTTP.Types.Status(status200, status400, status403, status404)
-import qualified Network.Wai as WAI
-import Network.Wai.Internal(ResponseReceived(ResponseReceived))
--}
 import Control.Monad(liftM, ap)
 import Data.IORef
 import Data.Either(partitionEithers)
 import Data.List(foldl')
-
 class Lattice a where
   leq :: a -> a -> Bool
   lub :: a -> a -> a
   bot :: a
-
 data Fac l a where
   Undefined :: Fac l a
   Raw :: a -> Fac l a
@@ -33,10 +21,8 @@ instance Applicative (Fac l) where
 instance Monad (Fac l) where
   return = Raw
   (>>=) = BindFac
-
 data FIORef l a =
   FIORef (IORef (Fac l a))
-
 data FIO l a where
   Return     :: a -> FIO l a
   BindFIO    :: FIO l a -> (a -> FIO l b) -> FIO l b
@@ -45,7 +31,6 @@ data FIO l a where
   New        :: a -> FIO l (FIORef l a)
   Read       :: FIORef l a -> FIO l (Fac l a)
   Write      :: FIORef l a -> Fac l a -> FIO l ()
-
 instance Functor (FIO l) where
   fmap = liftM
 instance Applicative (FIO l) where
@@ -54,18 +39,15 @@ instance Applicative (FIO l) where
 instance Monad (FIO l) where
   return = Return
   (>>=) = BindFIO
-
 data PC l =
     Constraints [l] [l]
   | Singleton l
-
 subsumes pc k =
   case pc of
     Constraints ks1 ks2 ->
           all (`leq` k) ks1
       &&  not (any (`leq` k) ks2)
     Singleton k' -> k == k'
-
 ffacet :: PC l -> Fac l a -> Fac l a -> Fac l a
 ffacet pc a b =
   case pc of
@@ -73,7 +55,6 @@ ffacet pc a b =
     Constraints (k:ks1) []  -> Fac k (ffacet (Constraints ks1 []) a b) b
     Constraints ks1 (k:ks2) -> Fac k b (ffacet (Constraints ks1 ks2) a b)
     Singleton _             -> undefined
-
 inconsistent pc =
   case pc of
     Constraints ks1 ks2 ->
@@ -98,7 +79,6 @@ minus pc k =
         Constraints [k] [k]  -- Any inconsistent pc will do
       else
         Singleton k'
-
 runFIO :: (Eq l, Lattice l) => PC l -> FIO l a -> IO a
 runFIO pc x =
   case x of

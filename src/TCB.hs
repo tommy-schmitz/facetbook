@@ -1,23 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TCB where
-
-{-
-import Control.Applicative
-import Control.Monad(liftM, ap)
-import Data.IORef
-import Data.String(fromString)
-import Network.HTTP.Types.Status(status200, status400, status403, status404)
-import Data.ByteString.Char8(unpack)
-import Data.List(find)
--}
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import qualified Network.Wai as WAI(Request, pathInfo)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
-
 import Shared(check_credentials, Post, Label(Whitelist, Bot), FList(Nil), get_parameter, valid_username)
 import FIO(Lattice(leq), FIO(IO, New), Fac(Raw, Fac, Undefined), FIORef, runFIO, PC(Constraints, Singleton))
 import qualified UCB as UCB(handle_request)
-
 policy :: WAI.Request -> (Label, Label)
 policy request =
   if WAI.pathInfo request == ["login"] then
@@ -35,7 +23,6 @@ policy request =
           (Whitelist [username], Whitelist [username])
       _ ->
         (Bot, Whitelist [username])
-
 main :: IO ()
 main = do  --IO
   database <- runFIO (Constraints [] []) $ do  --FIO

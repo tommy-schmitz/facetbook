@@ -1,27 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 module UCB where
-
-{-
-import Control.Applicative
-import Control.Monad(liftM, ap)
-import Data.IORef
-import qualified Network.Wai.Handler.Warp as Warp(run)
-import Network.Wai.Internal(ResponseReceived(ResponseReceived))
--}
 import qualified Data.List as List(intercalate, splitAt, drop, findIndex)
 import Data.Monoid((<>))
 import Data.String(fromString)
 import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status404)
 import qualified Network.Wai as WAI(Request, pathInfo, Response, responseLBS)
-
 import Shared(Post, User, check_credentials, Label, FList(Nil, Cons), get_parameter, valid_username)
 import FIO(FIO(Read, Write, Swap), Fac(), FIORef)
-
 type Ref = FIORef Label
 type PostList = FList Post
 type XIO = FIO Label
-
 data Action =
     Iam Bool
   | Reset
@@ -37,12 +26,9 @@ data TicTacToe = TicTacToe {
 }
 type Database = (Ref PostList, Ref [TicTacToe])
 type Handler = Database -> (WAI.Response -> XIO ()) -> XIO ()
-
 headers = [("Content-Type", "text/html")]
-
 navbar username =
   "<div><a href=\"login\">Logout</a></div>"
-
 login :: Handler
 login database respond =
   respond $ WAI.responseLBS status200 headers $
@@ -51,19 +37,16 @@ login database respond =
       "<form action=\"dashboard\">\n" <>
       "<input name=\"username\"></input>" <>
       "</form>\n"
-
 authentication_failed :: Handler
 authentication_failed database respond =
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
-
 do_create_post :: User -> Post -> [User] -> Handler
 do_create_post username content users database respond = do  --FIO
   d <- Read (fst database)
   Write (fst database) $ return $ Cons (username ++ ": " ++ content) d
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
-
 compose_post :: User -> Handler
 compose_post username database respond =
   respond $ WAI.responseLBS status200 headers $
@@ -77,7 +60,6 @@ compose_post username database respond =
       "Content:<br /><textarea name=\"content\"></textarea><br />" <>
       "<input type=\"submit\"></input>" <>
       "</form>\n"
-
 dashboard :: User -> Handler
 dashboard username database respond = do  --FIO
   d <- Read (fst database)
@@ -94,11 +76,9 @@ dashboard username database respond = do  --FIO
           "Recent posts:<hr />" <>
           ByteString.intercalate "<hr />" (map escape (take 20 posts))
   return ()
-
 not_found :: Handler
 not_found _ respond = do  --FIO
   respond $ WAI.responseLBS status404 [] "404 bad request"
-
 flatten :: Fac Label (FList a) -> Fac Label [a]
 flatten ffl = do  --Fac
   fl <- ffl
@@ -108,7 +88,6 @@ flatten ffl = do  --Fac
     Cons x ffl -> do  --Fac
       xs <- flatten ffl
       return (x:xs)
-
 escape s = fromString s' where
   f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
   f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
@@ -119,7 +98,6 @@ escape s = fromString s' where
   f (c   :cs) a = f cs (c:a)
   f []        a = a
   s' = reverse (f s [])
-
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
 get_winner game = do  --Either (Maybe Bool)
   let check (x1, y1) (x2, y2) (x3, y3) = do  --Either (Maybe Bool)
@@ -149,9 +127,7 @@ get_winner game = do  --Either (Maybe Bool)
     Right ()
   else
     Left Nothing  -- Cats game
-
 my_turn game username = turn game == player_assignment game username
-
 render_square game username x y =
   let content =
        case board game x y of
@@ -173,7 +149,6 @@ render_square game username x y =
   "px; border: 1px solid black; width: 28px; height: 28px; \">\n"
   <> content <>
   "\n</div>\n"
-
 render_roles game username partner =
   let my_role =
        if turn game == Nothing then
@@ -203,7 +178,6 @@ render_roles game username partner =
     Just False -> "O"
   ) <>
   "</div>"
-
 render_tictactoe game username partner =
   let sq x y = render_square game username x y  in
   navbar username <>
@@ -245,7 +219,6 @@ render_tictactoe game username partner =
   "</div>\n" <>
   "<a href onclick=\"return request('Reset')\">Reset</a><br />" <>
   fromString (List.intercalate "\n<br />\n" (history game))
-
 update_game :: TicTacToe -> Action -> User -> User -> TicTacToe
 update_game game action username partner =
   case action of
@@ -303,11 +276,9 @@ update_game game action username partner =
         }
       else
         game
-
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
-
 tictactoe_play username partner action database respond =
   if partner == username then
     respond $ WAI.responseLBS status200 headers $
@@ -344,7 +315,6 @@ tictactoe_play username partner action database respond =
             return new_game
         respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
     return ()
-
 tictactoe_select_partner username database respond =
   respond $ WAI.responseLBS status200 headers $
       "<h2>Play TicTacToe</h2>" <>
@@ -355,7 +325,6 @@ tictactoe_select_partner username database respond =
       "\"></input>" <>
       "  <input name=\"partner\"></input>" <>
       "</form>"
-
 parse_request :: WAI.Request -> Handler
 parse_request request =
   if WAI.pathInfo request == ["login"] then
@@ -383,7 +352,6 @@ parse_request request =
           tictactoe_select_partner username
       _ ->
         not_found
-
 handle_request :: Fac Label WAI.Request -> Handler
 handle_request faceted_request database respond = do  --FIO
   Swap $ do  --Fac
