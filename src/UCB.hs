@@ -7,7 +7,7 @@ import Data.String(fromString)
 import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status404)
 import qualified Network.Wai as WAI(Request, pathInfo, Response, responseLBS)
-import Shared(Post, User, check_credentials, Label, get_parameter, valid_username)
+import Shared
 type Ref = IORef
 type PostList = [(Label, Post)]
 type XIO = IO
@@ -292,7 +292,13 @@ tictactoe_play username partner action database respond =
                      game
             writeIORef (snd database) $ new_game : delete_at index game_list
             return new_game
-        respond $ WAI.responseLBS status200 headers $ render_tictactoe new_game username partner
+        labeled_posts <- readIORef (fst database)
+        let d = filter_posts (Whitelist [username]) labeled_posts
+        let posts = flatten d
+        respond $ WAI.responseLBS status200 headers $
+            render_tictactoe new_game username partner <>
+            "<br /><br />Recent posts:<hr />" <>
+            ByteString.intercalate "<hr />" (map escape (take 20 posts))
 tictactoe_select_partner username database respond =
   respond $ WAI.responseLBS status200 headers $
       "<h2>Play TicTacToe</h2>" <>

@@ -4,7 +4,7 @@ import Data.IORef
 import qualified Network.Wai.Handler.Warp as Warp(run)
 import qualified Network.Wai as WAI(Request, pathInfo)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
-import Shared(check_credentials, Post, Label(Whitelist, Bot), get_parameter, valid_username)
+import Shared
 import FIO(leq)
 import qualified UCB
 do_create_post username content users database respond = do  --IO
@@ -12,9 +12,6 @@ do_create_post username content users database respond = do  --IO
   let labeled_data = (Whitelist (username : users), username ++ ": " ++ content)
   writeIORef (fst database) (labeled_data : d)
   respond $ UCB.do_create_post_response username
-flatten :: [(Label, Post)] -> [Post]
-flatten = map snd
-filter_posts k = filter (\(k',p) -> leq k' k)
 dashboard username database respond = do  --IO
   labeled_posts <- readIORef (fst database)
   let d = filter_posts (Whitelist [username]) labeled_posts
@@ -44,7 +41,7 @@ handle_request request =
         let partner = get_parameter request "partner"  in
         if valid_username partner then
           let action = get_parameter request "action"  in
-          sandbox $ UCB.tictactoe_play username partner action
+          UCB.tictactoe_play username partner action
         else
           sandbox $ UCB.tictactoe_select_partner username
       _ ->

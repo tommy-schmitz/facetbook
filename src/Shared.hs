@@ -43,3 +43,6 @@ get_parameter request key =
       unpack value
     _ ->
       ""
+flatten :: [(Label, Post)] -> [Post]
+flatten = map snd
+filter_posts k = filter (\(k',p) -> leq k' k)
