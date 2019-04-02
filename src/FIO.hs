@@ -39,47 +39,24 @@ instance Applicative (FIO l) where
 instance Monad (FIO l) where
   return = Return
   (>>=) = BindFIO
-data PC l =
-    Constraints [l] [l]
-  | Singleton l
-subsumes pc k =
-  case pc of
-    Constraints ks1 ks2 ->
-          all (`leq` k) ks1
-      &&  not (any (`leq` k) ks2)
-    Singleton k' -> k == k'
+data PC l = PC [l] [l]
+subsumes (PC ks1 ks2) k =
+  all (`leq` k) ks1
+  &&  not (any (`leq` k) ks2)
 ffacet :: PC l -> Fac l a -> Fac l a -> Fac l a
 ffacet pc a b =
   case pc of
-    Constraints [] []       -> a
-    Constraints (k:ks1) []  -> Fac k (ffacet (Constraints ks1 []) a b) b
-    Constraints ks1 (k:ks2) -> Fac k b (ffacet (Constraints ks1 ks2) a b)
-    Singleton _             -> undefined
-inconsistent pc =
-  case pc of
-    Constraints ks1 ks2 ->
-      let l_c = foldl' lub bot ks1  in
-      any (`leq` l_c) ks2
-    Singleton _ -> False
-plus pc k =
-  case pc of
-    Constraints ks1 ks2 ->
-      Constraints (k : ks1) ks2
-    Singleton k' ->
-      if k `leq` k' then
-        Singleton k'
-      else
-        Constraints [k] [k]  -- Any inconsistent pc will do
-minus pc k =
-  case pc of
-    Constraints ks1 ks2 ->
-      Constraints ks1 (k : ks2)
-    Singleton k' ->
-      if k `leq` k' then
-        Constraints [k] [k]  -- Any inconsistent pc will do
-      else
-        Singleton k'
-runFIO :: (Eq l, Lattice l) => PC l -> FIO l a -> IO a
+    PC [] []       -> a
+    PC (k:ks1) []  -> Fac k (ffacet (PC ks1 []) a b) b
+    PC ks1 (k:ks2) -> Fac k b (ffacet (PC ks1 ks2) a b)
+inconsistent (PC ks1 ks2) =
+  let l_c = foldl' lub bot ks1  in
+  any (`leq` l_c) ks2
+plus (PC ks1 ks2) k =
+  PC (k : ks1) ks2
+minus (PC ks1 ks2) k =
+  PC ks1 (k : ks2)
+runFIO :: Lattice l => PC l -> FIO l a -> IO a
 runFIO pc x =
   case x of
     Return a ->

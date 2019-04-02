@@ -4,7 +4,7 @@ import qualified Network.Wai.Handler.Warp as Warp(run)
 import qualified Network.Wai as WAI(Request, pathInfo)
 import Network.Wai.Internal(ResponseReceived(ResponseReceived))
 import Shared(check_credentials, Post, Label(Whitelist, Bot), FList(Nil), get_parameter, valid_username)
-import FIO(Lattice(leq), FIO(IO, New), Fac(Raw, Fac, Undefined), FIORef, runFIO, PC(Constraints, Singleton))
+import FIO(Lattice(leq), FIO(IO, New), Fac(Raw, Fac, Undefined), FIORef, runFIO, PC(PC))
 import qualified UCB as UCB(handle_request)
 policy :: WAI.Request -> (Label, Label)
 policy request =
@@ -25,7 +25,7 @@ policy request =
         (Bot, Whitelist [username])
 main :: IO ()
 main = do  --IO
-  database <- runFIO (Constraints [] []) $ do  --FIO
+  database <- runFIO (PC [] []) $ do  --FIO
     r1 <- New Nil
     r2 <- New []
     return (r1, r2)
@@ -36,6 +36,6 @@ main = do  --IO
          respond x
          return ()
     let faceted_request = Fac k1 (Raw request) Undefined
-    runFIO (Constraints [] []) $
+    runFIO (PC [] []) $
         UCB.handle_request faceted_request database fio_respond
     return ResponseReceived
