@@ -17,6 +17,16 @@ dashboard username database respond = do  --IO
   let d = filter_posts (Whitelist [username]) labeled_posts
   let posts = flatten d
   respond $ UCB.dashboard_response username posts
+tictactoe_play username partner action database respond =
+  if partner == username then
+    respond $ UCB.tictactoe_error_response
+  else do  --IO
+    let censored_database = (undefined, snd database)
+    new_game <- UCB.update_game username partner action censored_database
+    labeled_posts <- readIORef (fst database)
+    let d = filter_posts (Whitelist [username]) labeled_posts
+    let posts = flatten d
+    respond $ UCB.tictactoe_play_response new_game username partner posts
 handle_request request =
   let sandbox h = \database respond ->
        let censored = (undefined, snd database)  in
@@ -41,7 +51,7 @@ handle_request request =
         let partner = get_parameter request "partner"  in
         if valid_username partner then
           let action = get_parameter request "action"  in
-          UCB.tictactoe_play username partner action
+          tictactoe_play username partner action
         else
           sandbox $ UCB.tictactoe_select_partner username
       _ ->

@@ -201,8 +201,8 @@ render_tictactoe game username partner =
   "</div>\n" <>
   "<a href onclick=\"return request('Reset')\">Reset</a><br />" <>
   fromString (List.intercalate "\n<br />\n" (history game))
-update_game :: TicTacToe -> Action -> User -> User -> TicTacToe
-update_game game action username partner =
+apply_action :: TicTacToe -> Action -> User -> User -> TicTacToe
+apply_action game action username partner =
   case action of
     Noop ->
       game
@@ -261,17 +261,16 @@ update_game game action username partner =
 delete_at index list =
   let (list_1, list_2) = List.splitAt index list  in
   list_1 ++ List.drop 1 list_2
-tictactoe_play username partner action database respond =
-  if partner == username then
-    respond $ WAI.responseLBS status200 headers $
+tictactoe_error_response =
+  WAI.responseLBS status200 headers $
         "Sorry, but playing a game with yourself is not supported."
-  else do  --IO
+update_game username partner action database = do  --IO
         game_list <- readIORef (snd database)
         let maybe_game_index = List.findIndex (\game ->
                username `elem` players game  &&
                partner  `elem` players game
              ) game_list
-        new_game <- case maybe_game_index of
+        case maybe_game_index of
           Nothing -> do  --IO
             let new_game = TicTacToe {
               players = [username, partner],
@@ -287,15 +286,13 @@ tictactoe_play username partner action database respond =
             let new_game =
                  case readsPrec 0 action of
                    [(parsed_action, "")] ->
-                     update_game game parsed_action username partner
+                     apply_action game parsed_action username partner
                    _ ->
                      game
             writeIORef (snd database) $ new_game : delete_at index game_list
             return new_game
-        labeled_posts <- readIORef (fst database)
-        let d = filter_posts (Whitelist [username]) labeled_posts
-        let posts = flatten d
-        respond $ WAI.responseLBS status200 headers $
+tictactoe_play_response new_game username partner posts =
+  WAI.responseLBS status200 headers $
             render_tictactoe new_game username partner <>
             "<br /><br />Recent posts:<hr />" <>
             ByteString.intercalate "<hr />" (map escape (take 20 posts))
