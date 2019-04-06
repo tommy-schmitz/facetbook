@@ -4,16 +4,31 @@ import Data.IORef
 import qualified Data.List as List(intercalate, splitAt, drop, findIndex)
 import Data.Monoid((<>))
 import Data.String(fromString)
+import qualified Data.ByteString.Lazy.Char8 as ByteString(intercalate)
 import Network.HTTP.Types.Status(status200, status404)
 import qualified Network.Wai as WAI(Request, pathInfo, Response, responseLBS)
-import Shared
-import FIO(leq)
+import Shared(Post, User, check_credentials, Label, get_parameter, valid_username)
+type Ref = IORef
+type PostList = [(Label, Post)]
+type XIO = IO
 data Action =
     Iam Bool
   | Reset
   | Move Int Int
   | Noop
   deriving (Read, Show)
+data TicTacToe = TicTacToe {
+  players :: [User],
+  player_assignment :: User -> Maybe Bool,  -- 'True' means X, 'False' means O
+  turn :: Maybe Bool,  -- 'Nothing' means game hasn't started yet.
+  board :: Int -> Int -> Maybe Bool,
+  history :: [String]
+}
+type Database = (Ref PostList, Ref [TicTacToe])
+type Handler = Database -> (WAI.Response -> XIO ()) -> XIO ()
+headers = [("Content-Type", "text/html")]
+navbar username =
+  "<div><a href=\"login\">Logout</a></div>"
 login :: Handler
 login database respond =
   respond $ WAI.responseLBS status200 headers $
@@ -26,6 +41,9 @@ authentication_failed :: Handler
 authentication_failed database respond =
   respond $ WAI.responseLBS status200 headers $
       "<meta http-equiv=\"refresh\" content=\"0; url=/login\" />"
+do_create_post_response username =
+  WAI.responseLBS status200 headers $
+      "<meta http-equiv=\"refresh\" content=\"0; url=/dashboard?username="<>escape username<>"\" />"
 compose_post :: User -> Handler
 compose_post username database respond =
   respond $ WAI.responseLBS status200 headers $
@@ -39,9 +57,29 @@ compose_post username database respond =
       "Content:<br /><textarea name=\"content\"></textarea><br />" <>
       "<input type=\"submit\"></input>" <>
       "</form>\n"
+dashboard_response username posts =
+  WAI.responseLBS status200 headers $
+          navbar username <>
+          "<h2>Dashboard</h2>" <>
+          "<a href=\"/post?username="<>escape username<>"\">Create post</a><br />" <>
+          "<br /><a href=\"tictactoe?username=" <>
+          escape username <>
+          "\">Play TicTacToe</a><br />" <>
+          "Recent posts:<hr />" <>
+          ByteString.intercalate "<hr />" (map escape (take 20 posts))
 not_found :: Handler
 not_found _ respond = do  --IO
   respond $ WAI.responseLBS status404 [] "404 bad request"
+escape s = fromString s' where
+  f ('<' :cs) a = f cs (reverse "&lt;"   ++ a)
+  f ('>' :cs) a = f cs (reverse "&gt;"   ++ a)
+  f ('&' :cs) a = f cs (reverse "&amp;"  ++ a)
+  f ('"' :cs) a = f cs (reverse "&quot;" ++ a)
+  f ('\'':cs) a = f cs (reverse "&#39;"  ++ a)
+  f ('\n':cs) a = f cs (reverse "<br />" ++ a)
+  f (c   :cs) a = f cs (c:a)
+  f []        a = a
+  s' = reverse (f s [])
 get_winner :: TicTacToe -> Either (Maybe Bool) ()
 get_winner game = do  --Either (Maybe Bool)
   let check (x1, y1) (x2, y2) (x3, y3) = do  --Either (Maybe Bool)
