@@ -1,0 +1,140 @@
+\documentclass{article}
+
+\iffalse
+
+% This needs to be added before hyperref
+\usepackage[papersize={8.5in,11in},inner=1.5in,outer=1.25in,top=1.25in,bottom=1.25in]{geometry}
+
+\usepackage{fixltx2e}
+\usepackage{url}
+\usepackage{amsmath, amsthm, amssymb}
+\usepackage{color}
+\usepackage{xspace}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{psfrag}
+\usepackage{pbox}
+\usepackage{epstopdf}
+\usepackage{textcomp} % For copyright symbol
+\DeclareGraphicsExtensions{.pdf,.eps,.png,.jpg}
+\usepackage[font=singlespacing]{subcaption}
+\captionsetup[table]{labelfont=bf,font=singlespacing}
+\captionsetup[figure]{labelfont=bf,font=singlespacing}
+\captionsetup[subfigure]{labelfont=bf,font=singlespacing}
+\usepackage[titletoc,title]{appendix}
+\usepackage{tabularx}
+\usepackage{rotating}
+\usepackage{hyperref} % Turns all internal references into links to pages within the document
+
+\usepackage{lmodern} % Use the Latin Modern font
+\usepackage[T1]{fontenc} % Use a modern font encoding
+
+\makeatletter % Hack to get setspace working properly
+\let\@currsize\normalsize
+\makeatother
+\usepackage{setspace}% http://ctan.org/pkg/setspace
+
+\usepackage[backend=bibtex, url=false, doi=false, isbn=false, maxbibnames=99]{biblatex}
+
+% Packages for proposal.tex
+\newcommand{\myapp}{FacetBook}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+%\usepackage{natbib}
+\usepackage{pdfpages}
+\usepackage{bibentry}
+\addbibresource{proposal.bib}
+
+% Packages for bimonad.tex
+\usepackage{citesort}
+%\usepackage{url}
+%\usepackage{color}
+%\usepackage{amsmath}
+%\usepackage{amssymb}
+\usepackage{listings}
+%\usepackage[backend=bibtex, url=false, doi=false, isbn=false]{biblatex}
+\addbibresource{haskFacets.bib}
+
+%\ewafoiwnfeoi{Why no haskFacets.aux existing?}
+% Because you're stupid. You need dissertation.aux, not haskFacets.aux
+
+% Packages for multef.tex
+\usepackage{wrapfig}
+\usepackage{framed}
+\usepackage{hyperref}
+\usepackage{graphicx}
+%\usepackage{amsmath}
+%\usepackage{amssymb}
+\usepackage{subcaption}
+\usepackage{mathrsfs}
+\usepackage{subcaption}
+\usepackage{caption}
+%\usepackage{url}
+\usepackage{mathtools}
+\usepackage{pifont}
+\usepackage{microtype}
+\usepackage{balance}
+\usepackage{tcolorbox}
+\usepackage{pgf}
+\hyphenation{op-tical net-works semi-conduc-tor}
+\usepackage{soul} % Highlight
+\usepackage{centernot}
+%\usepackage{color}
+\usepackage{listings}
+\usepackage{relsize}
+\usepackage{textcomp}
+\usepackage[utf8]{inputenc}
+%\usepackage[T1]{fontenc}
+\usepackage{mathpartir}
+\usepackage{paralist}
+\usepackage{xspace}
+\usepackage{amssymb}
+\usepackage{bussproofs}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning}
+%\usepackage{amsmath,bm,times}
+%\usepackage{amsmath}
+\usepackage{tikz-cd}
+\usetikzlibrary{calc,decorations.pathmorphing}
+\usepackage{tikzsymbols}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning}
+%\usepackage{amsmath,bm,times}
+%\usepackage{amsmath}
+\usepackage{tikz-cd}
+\usetikzlibrary{calc,decorations.pathmorphing}
+\usepackage{tikzsymbols}
+\usepackage{ifthen}
+\newtheorem{defn}{Definition}
+\newtheorem{thm}{Theorem}
+\newtheorem{prop}{Proposition}
+\newtheorem{asm}{Assumption}
+\newtheorem{req}{Requirement}
+\usepackage{thmtools}
+\declaretheorem{theorem}
+\declaretheorem[name=Lemma, style=theorem]{lemma}
+\declaretheorem[name=Corollary, style=theorem]{corollary}
+\declaretheorem[name=Definition, style=definition]{definition}
+\declaretheorem[name=Example, style=definition]{example}
+% thmstyle: remark
+\declaretheorem[name=Proof sketch, style=remark]{proofsketch}
+\usepackage{cleveref}
+\usepackage{minted}
+\addbibresource{main.bib}
+\addbibresource{local.bib}
+\addbibresource{dissertation.bib}
+
+% Set default spacing to double (yes, it should be 1.6 here...)
+\linespread{1.6}
+
+
+\fi
+
+\usepackage{minted}
+\usepackage{amsmath, amsthm, amssymb}
+\usepackage[backend=bibtex, url=false, doi=false, isbn=false, maxbibnames=99]{biblatex}
+\addbibresource{bib.bib}
+\newcommand{\myapp}{FacetBook}
+\usepackage{rotating}
+\usepackage{tikz}

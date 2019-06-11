@@ -1,0 +1,7 @@
+./run
+bibtex main1-blx
+#bibtex dissertation2-blx
+#bibtex dissertation3-blx
+#bibtex dissertation4-blx
+./run
+./run
